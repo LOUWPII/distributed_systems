@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+service Consulta {
+    rpc ConsultarNotas ( NotasRequest) returns (NotasReply) {}
+    rpc ConsultarGrupo ( GrupoRequest) returns ( GrupoReply) {}
+    rpc ConsultarEvaluaciones (EvaluacionesRequest) returns ( EvaluacionesReply) {}
+}
+
+message NotasRequest{
+    string estudiante = 1; //nombre o apellido del estudiante
+}
+message NotasReply{
+    float promedio = 1;
+}
+message GrupoRequest{
+    string estudiante = 1; //nombre o apellido del estudiante
+}
+message GrupoReply{
+    string grupo = 1;
+}
+message EvaluacionesRequest{
+    string estudiante = 1; //nombre o apellido del estudiante
+}
+message EvaluacionesReply{
+    float notaQuiz = 1;
+    float notaTaller = 2;
+}
