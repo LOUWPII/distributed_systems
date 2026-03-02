@@ -4,7 +4,7 @@ import interfaz_pb2_grpc
 
 def ejecutar_client():
     # Creamos el canal (el tubo de comunicación)
-    with grpc.insecure_channel('192.168.80.59:50051') as canal:
+    with grpc.insecure_channel('localhost:50051') as canal:
 
         stub = interfaz_pb2_grpc.ConsultaStub(canal)
         
