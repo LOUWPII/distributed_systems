@@ -1,10 +1,22 @@
+// Se utiliza Protocol Buffers version 3
 syntax = "proto3";
 
+//El servicio Consulta define los metodos rpc que los clientes pueden invocar en el servidor
 service Consulta {
+    //Metodo para consutar el promedio de notas de un estudiante
+    //recibe el mensaje NotasRequest y retorna un mensaje NotasReply
     rpc ConsultarNotas ( NotasRequest) returns (NotasReply) {}
+
+    //Metodo para consutar el grupo de un estudiante
+    //recibe el mensaje GrupoRequest y retorna un mensaje GrupoReply
     rpc ConsultarGrupo ( GrupoRequest) returns ( GrupoReply) {}
+
+    //Metodo para consutar las notas de taller y quiz de un estudiante
+    //recibe el mensaje EvaluacionesRequest y retorna un mensaje EvaluacionesReply
     rpc ConsultarEvaluaciones (EvaluacionesRequest) returns ( EvaluacionesReply) {}
 }
+
+//Se definen los posibles mensajes al servidor y respuestas del servidor
 
 message NotasRequest{
     string estudiante = 1; //nombre o apellido del estudiante
