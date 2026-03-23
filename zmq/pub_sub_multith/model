@@ -1,0 +1,44 @@
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  HILO SENSOR 1  │     │  HILO SENSOR 2  │     │  HILO SENSOR 3  │
+│   (espira)      │     │   (camara)      │     │    (gps)        │
+│                 │     │                 │     │                 │
+│  genera datos   │     │  genera datos   │     │  genera datos   │
+│  cada 1 seg     │     │  cada 2 seg     │     │  cada 3 seg     │
+│       │         │     │       │         │     │       │         │
+│       ▼         │     │       ▼         │     │       ▼         │
+│   cola.put()    │     │   cola.put()    │     │   cola.put()    │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 ▼
+                    ┌─────────────────────────┐
+                    │      queue.Queue        │
+                    │   (compartida, segura)  │
+                    │                         │
+                    │  [dato1, dato2, dato3...] │
+                    └─────────────────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │    HILO PUBLICADOR      │
+                    │                         │
+                    │  while True:            │
+                    │    dato = cola.get()    │
+                    │    socket.send(dato)    │
+                    │                         │
+                    │  (único con socket ZMQ) │
+                    └─────────────────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │          BROKER         │
+                    │                         │
+                    │   tcp://localhost:5555  │
+                    │                         │
+                    │                         │
+                    │                         │
+                    │                         │
+                    │                         │
+                    │                         │
+                    │                         │
+                    └─────────────────────────┘
