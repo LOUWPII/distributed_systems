@@ -1,0 +1,64 @@
+{
+  "ciudad": {
+    "filas": 4,
+    "columnas": 4,
+    "descripcion": "Cuadrícula del caso de prueba"
+  },
+  "parametros_simulacion": {
+    "intervalo_evolucion_s": 5,
+    "intervalo_sensores_s": 10,
+    "volatilidad_ruido": 0.15,
+    "probabilidad_shock": 0.05
+  },
+  "sensores": [
+    {
+      "sensor_id": "ESP-C3",
+      "tipo_sensor": "espira_inductiva",
+      "interseccion": "INT_C3",
+      "direccion": "fila"
+    },
+    {
+      "sensor_id": "CAM-F3",
+      "tipo_sensor": "camara",
+      "interseccion": "INT_F3",
+      "direccion": "columna"
+    },
+    {
+      "sensor_id": "GPS-C4",
+      "tipo_sensor": "gps",
+      "interseccion": "INT_C4",
+      "direccion": "fila"
+    }
+  ],
+  "semaforos": [
+    {
+      "semaforo_id": "SEM-F3",
+      "interseccion": "INT_F3",
+      "direccion": "fila",
+      "estado_inicial": "VERDE"
+    },
+    {
+      "semaforo_id": "SEM-C3",
+      "interseccion": "INT_C3",
+      "direccion": "columna",
+      "estado_inicial": "VERDE"
+    },
+    {
+      "semaforo_id": "SEM-C4",
+      "interseccion": "INT_C4",
+      "direccion": "columna",
+      "estado_inicial": "VERDE"
+    }
+  ],
+  "broker": {
+    "modo": "simple",
+    "sub_port": 5550,
+    "pub_port": 5551
+  },
+  "red": {
+    "pc1_ip": "x.x.x.x",
+    "pc2_ip": "x.x.x.x",
+    "pc3_ip": "x.x.x.x",
+    "control_semaforos_port": 5555
+  }
+}
