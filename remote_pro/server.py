@@ -74,7 +74,7 @@ def serve():
     )
 
     #Direccion y puerto en el que el servidor escuchara las solicitudes del cliente
-    server.add_insecure_port('localhost:50051')
+    server.add_insecure_port('[::]:50051')
     #Se inicia el servidor
     server.start()
     
