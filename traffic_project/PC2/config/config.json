@@ -1,0 +1,59 @@
+{
+  "red": {
+    "broker_url":        "tcp://192.168.1.10:5555",
+    "semaforos_url":     "tcp://localhost:5556",
+    "bd_replica_url":    "tcp://localhost:5557",
+    "bd_principal_url":  "tcp://192.168.1.30:5558",
+    "query_handler_url": "tcp://*:5560",
+    "pc3_health_url":    "tcp://192.168.1.30:5562"
+  },
+  "topicos": {
+    "camara": "camara",
+    "espira": "espira_inductiva",
+    "gps":    "gps"
+  },
+  "health_check": {
+    "intervalo_s": 5,
+    "timeout_s":   2
+  },
+  "sensores": [
+    {
+      "sensor_id":    "CAM-C5",
+      "tipo":         "camara",
+      "interseccion": "INT_C5",
+      "calle_id":     "fila_C",
+      "direccion":    "fila"
+    },
+    {
+      "sensor_id":    "ESP-C2",
+      "tipo":         "espira_inductiva",
+      "interseccion": "INT_C2",
+      "calle_id":     "fila_C",
+      "direccion":    "fila"
+    },
+    {
+      "sensor_id":    "GPS-B3",
+      "tipo":         "gps",
+      "interseccion": "INT_B3",
+      "calle_id":     "col_3",
+      "direccion":    "columna"
+    }
+  ],
+  "intersecciones": [
+    {
+      "interseccion_id": "INT_C2",
+      "calle_fila":      "fila_C",
+      "calle_columna":   "col_2"
+    },
+    {
+      "interseccion_id": "INT_C5",
+      "calle_fila":      "fila_C",
+      "calle_columna":   "col_5"
+    },
+    {
+      "interseccion_id": "INT_B3",
+      "calle_fila":      "fila_B",
+      "calle_columna":   "col_3"
+    }
+  ]
+}
