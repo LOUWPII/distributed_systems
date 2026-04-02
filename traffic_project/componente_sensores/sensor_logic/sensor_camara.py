@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-from distributed_systems.traffic_project.componente_sensores.sensor_base import SensorBase
+from distributed_systems.traffic_project.componente_sensores.sensor_logic.sensor_base import SensorBase
 
 
 class SensorCamara(SensorBase):
-    # Parámetros configurables de la cámara [2]
+    # Parámetros configurables de la cámara
     Q_COLA_MAX = 20  # Máximo de vehículos en cola visibles
     VF = 50          # Velocidad de flujo libre (km/h)
 
@@ -23,5 +23,5 @@ class SensorCamara(SensorBase):
             "interseccion": self.interseccion,
             "volumen": cola,  # Número de vehículos en espera
             "velocidad_promedio": velocidad,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
         }

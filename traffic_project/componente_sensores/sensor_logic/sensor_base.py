@@ -26,6 +26,7 @@ class SensorBase(ABC):
         self.city_manager = city_manager
         self.cola_salida = cola
         self.intervalo_s = intervalo
+        self.contador_eventos = 0
 
         # Construye el nombre de la calle (ej: fila_C)
         self.calle = f"{self.direccion}_{self.interseccion[-2]}"
@@ -57,7 +58,9 @@ class SensorBase(ABC):
             nivel_efectivo = self._aplicar_ruido(nivel_base)
 
             # Generar el JSON y ponerlo en la cola thread-safe [7, 8]
+            self.contador_eventos += 1
             evento = self.generar_evento(nivel_efectivo)
+            evento['id_evento'] = self.contador_eventos
             self.cola_salida.put(evento)
 
             time.sleep(self.intervalo_s)

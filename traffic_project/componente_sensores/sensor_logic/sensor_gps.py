@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-from distributed_systems.traffic_project.componente_sensores.sensor_base import SensorBase
+from distributed_systems.traffic_project.componente_sensores.sensor_logic.sensor_base import SensorBase
 
 
 class SensorGPS(SensorBase):
-    VF = 50  # Velocidad de flujo libre (km/h) [3]
+    VF = 50  # Velocidad de flujo libre (km/h)
 
     def generar_evento(self, nivel):
         """
@@ -15,9 +15,10 @@ class SensorGPS(SensorBase):
 
         return {
             "sensor_id": self.sensor_id,
+            "tipo_sensor": "gps",
             "nivel_congestion": congestion,
             "velocidad_promedio": velocidad,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
         }
 
     def _calcular_congestion(self, velocidad):

@@ -2,7 +2,7 @@ import threading
 import time
 import random
 
-from distributed_systems.traffic_project.componente_sensores.traffic_state import TrafficState
+from .traffic_state import TrafficState
 
 
 class CityManager:

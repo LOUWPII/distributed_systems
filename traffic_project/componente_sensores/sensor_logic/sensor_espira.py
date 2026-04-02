@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from distributed_systems.traffic_project.componente_sensores.sensor_base import SensorBase
+from distributed_systems.traffic_project.componente_sensores.sensor_logic.sensor_base import SensorBase
 
 
 class SensorEspira(SensorBase):
@@ -16,16 +16,16 @@ class SensorEspira(SensorBase):
         vehiculos = int(nivel * (1 - nivel) * self.Q_MAX)
 
         # Tiempos requeridos por el enunciado para el reporte de 30s
-        ahora = datetime.utcnow()
+        ahora = datetime.now(timezone.utc)
         inicio = ahora - timedelta(seconds=30)
 
-        # Estructura exacta del JSON solicitada
+        # Estructura del JSON
         return {
             "sensor_id": self.sensor_id,
             "tipo_sensor": "espira_inductiva",
             "interseccion": self.interseccion,
             "vehiculos_contados": vehiculos,
             "intervalo_segundos": 30,
-            "timestamp_inicio": inicio.isoformat() + "Z",
-            "timestamp_fin": ahora.isoformat() + "Z"
+            "timestamp_inicio": inicio.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+            "timestamp_fin": ahora.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
         }
