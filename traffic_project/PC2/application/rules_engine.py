@@ -162,7 +162,7 @@ class RulesEngine(threading.Thread):
 
         calle_id = evento.calle_id
         if calle_id not in self._estados_calle:
-            print(f"[RulesEngine] ⚠ Evento de calle desconocida: {calle_id}")
+            print(f"[RulesEngine] Evento de calle desconocida: {calle_id}")
             return
 
         estado = self._estados_calle[calle_id]
@@ -207,7 +207,7 @@ class RulesEngine(threading.Thread):
         motivo = f"Regla automática: {estado_anterior.value} → {estado_nuevo.value}"
 
         print(
-            f"[RulesEngine] ★ Cambio de estado: {estado.calle_id} | "
+            f"[RulesEngine] Cambio de estado: {estado.calle_id} | "
             f"{estado_anterior.value} → {estado_nuevo.value}"
         )
 

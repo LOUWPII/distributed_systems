@@ -113,11 +113,11 @@ class HealthMonitor(threading.Thread):
 
         if estado_anterior and not nuevo_estado:
             print(
-                "[HealthMonitor] ⚠ PC3 NO DISPONIBLE — "
+                "[HealthMonitor] PC3 NO DISPONIBLE — "
                 "redirigiendo escrituras a BD Réplica"
             )
         elif not estado_anterior and nuevo_estado:
             print(
-                "[HealthMonitor] ✓ PC3 RECUPERADO — "
+                "[HealthMonitor] PC3 RECUPERADO — "
                 "reanudando escrituras en BD Principal"
             )

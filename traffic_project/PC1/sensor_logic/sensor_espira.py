@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from distributed_systems.traffic_project.componente_sensores.sensor_logic.sensor_base import SensorBase
+from distributed_systems.traffic_project.PC1.sensor_logic.sensor_base import SensorBase
 
 
 class SensorEspira(SensorBase):

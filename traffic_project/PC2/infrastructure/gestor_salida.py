@@ -71,7 +71,7 @@ class GestorSalida:
             self._sock_semaforos.send_string(comando.to_json(), zmq.NOBLOCK)
             print(f"[GestorSalida] → Semáforo: {comando}")
         except zmq.Again:
-            print(f"[GestorSalida] ⚠ Cola de semáforos llena, comando descartado: {comando}")
+            print(f"[GestorSalida] Cola de semáforos llena, comando descartado: {comando}")
 
     def persistir_evento(self, evento: EventoSensor) -> None:
         """
@@ -143,11 +143,11 @@ class GestorSalida:
         try:
             self._sock_bd_replica.send_string(mensaje, zmq.NOBLOCK)
         except zmq.Again:
-            print("[GestorSalida] ⚠ Cola BD réplica llena")
+            print("[GestorSalida] Cola BD réplica llena")
 
         # Escribir en principal solo si PC3 está disponible
         if self._health.is_pc3_disponible():
             try:
                 self._sock_bd_principal.send_string(mensaje, zmq.NOBLOCK)
             except zmq.Again:
-                print("[GestorSalida] ⚠ Cola BD principal llena — solo réplica")
+                print("[GestorSalida] Cola BD principal llena — solo réplica")

@@ -53,7 +53,12 @@
   "broker": {
     "modo": "simple",
     "sub_port": 5550,
-    "pub_port": 5551
+    "pub_port": 5551,
+    "topicos": [
+    "sensor.espira_inductiva",
+    "sensor.camara",
+    "sensor.gps"
+    ]
   },
   "red": {
     "pc1_ip": "x.x.x.x",

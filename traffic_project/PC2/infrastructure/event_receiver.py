@@ -101,8 +101,8 @@ class EventReceiver(threading.Thread):
         try:
             evento = evento_desde_topico(topico, data)
             if evento is None:
-                print(f"[EventReceiver] ⚠ Evento inválido descartado | tópico={topico}")
+                print(f"[EventReceiver] Evento inválido descartado | tópico={topico}")
             return evento
         except (KeyError, ValueError) as e:
-            print(f"[EventReceiver] ⚠ Error deserializando evento: {e} | data={data}")
+            print(f"[EventReceiver] Error deserializando evento: {e} | data={data}")
             return None
