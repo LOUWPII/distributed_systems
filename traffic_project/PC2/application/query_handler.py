@@ -1,21 +1,3 @@
-"""
-QueryHandler — Manejador de solicitudes del Servicio de Monitoreo (PC3).
-
-Corre en su propio hilo escuchando un socket ZMQ REP.
-Cuando llega una solicitud, la procesa y responde antes de aceptar la siguiente.
-
-Tipos de solicitud que maneja:
-  1. CONSULTA_ESTADO_ACTUAL  → retorna el estado actual de una calle
-  2. CONSULTA_TODOS_ESTADOS  → retorna el estado de todas las calles
-  3. CONSULTA_INTERSECCION   → retorna el estado de una intersección
-  4. ORDEN_DIRECTA           → fuerza un estado en una calle (ej: ambulancia)
-
-Comunicación ZMQ:
-    - Patrón REP: recibe REQ del Monitoreo, responde, recibe el siguiente REQ
-    - El socket REP en ZMQ es estrictamente alternante: recv → send → recv → send
-    - Si se rompe el orden (dos recv seguidos) el socket queda en error
-"""
-
 import json
 import threading
 import zmq
@@ -25,17 +7,8 @@ from dominio.orden_directa import OrdenDirecta
 from enums import EstadoTrafico
 from application.rules_engine import RulesEngine
 
-
+# Hilo que atiende solicitudes síncronas del usuario desde PC3.
 class QueryHandler(threading.Thread):
-    """
-    Hilo que atiende solicitudes síncronas del usuario desde PC3.
-
-    Corre separado del RulesEngine para que una consulta lenta no bloquee
-    el procesamiento de eventos de sensores.
-
-    El protocolo de solicitud/respuesta es JSON en ambas direcciones.
-    """
-
     def __init__(
         self,
         config: Config,
@@ -48,21 +21,21 @@ class QueryHandler(threading.Thread):
         self._contexto_zmq = zmq.Context.instance()
         self._socket = None
 
-    # ------------------------------------------------------------------
     # Ciclo principal del hilo
-    # ------------------------------------------------------------------
-
     def run(self) -> None:
+        # Crea un socket REP para recibir solicitudes del usuario
         self._socket = self._contexto_zmq.socket(zmq.REP)
         self._socket.bind(self._config.query_handler_url)
         print(f"[QueryHandler] Escuchando en {self._config.query_handler_url}")
 
+        # Mientras el hilo esté activo, recibe solicitudes del usuario
         while self._activo:
             try:
                 # recv() bloquea hasta que llegue una solicitud de PC3
                 mensaje = self._socket.recv_string()
                 solicitud = self._parse_request(mensaje)
 
+                # Si la solicitud es inválida, retorna un error
                 if solicitud is None:
                     respuesta = self._error("Solicitud mal formada")
                 else:
@@ -71,28 +44,25 @@ class QueryHandler(threading.Thread):
                 # En REP siempre hay que responder antes del siguiente recv()
                 self._socket.send_string(json.dumps(respuesta))
 
+            # Si hay un error ZMQ, lo imprime
             except zmq.ZMQError as e:
                 if self._activo:
                     print(f"[QueryHandler] Error ZMQ: {e}")
 
         print("[QueryHandler] Detenido")
 
+    # Detiene el hilo
     def detener(self) -> None:
         self._activo = False
         if self._socket:
             self._socket.close()
 
-    # ------------------------------------------------------------------
-    # Procesamiento de solicitudes
-    # ------------------------------------------------------------------
-
+    # Atiende la solicitud y la enruta al manejador correcto según su tipo.
     def atender_consulta(self, solicitud: dict) -> dict:
-        """
-        Enruta la solicitud al manejador correcto según su tipo.
-        Retorna siempre un dict con al menos {"estado": "OK"} o {"estado": "ERROR"}.
-        """
+        # Obtiene el tipo de solicitud
         tipo = solicitud.get("tipo", "")
 
+        # Diccionario de manejadores
         manejadores = {
             "CONSULTA_ESTADO_ACTUAL": self._handle_estado_actual,
             "CONSULTA_TODOS_ESTADOS": self._handle_todos_estados,
@@ -100,7 +70,9 @@ class QueryHandler(threading.Thread):
             "ORDEN_DIRECTA": self._handle_orden_directa,
         }
 
+        # Obtiene el manejador correspondiente al tipo de solicitud
         handler = manejadores.get(tipo)
+        # Si no existe el manejador, retorna un error
         if handler is None:
             return self._error(f"Tipo de solicitud desconocido: {tipo}")
 
@@ -109,73 +81,72 @@ class QueryHandler(threading.Thread):
         except Exception as e:
             return self._error(f"Error procesando solicitud: {e}")
 
+    # Ejecuta una OrdenDirecta
     def ejecutar_orden(self, orden: OrdenDirecta) -> None:
-        """
-        Registra y ejecuta una OrdenDirecta.
-        Llamado internamente por _handle_orden_directa().
-        """
+        # Registra y ejecuta una OrdenDirecta.
+        # Llamado internamente por _handle_orden_directa().
         self._rules_engine.registrar_orden(orden)
 
-    # ------------------------------------------------------------------
-    # Manejadores específicos por tipo de solicitud
-    # ------------------------------------------------------------------
-
+    # Manejador para consulta de estado actual
     def _handle_estado_actual(self, solicitud: dict) -> dict:
-        """
-        Retorna el estado actual de una calle específica.
-        Solicitud: { tipo, calle_id }
-        """
+        # Retorna el estado actual de una calle específica.
+        # Solicitud: { tipo, calle_id }
         calle_id = solicitud.get("calle_id")
+        # Si no se proporciona calle_id, retorna un error
         if not calle_id:
             return self._error("Falta campo calle_id")
 
+        # Obtiene el estado de la calle
         estado = self._rules_engine.get_estado_calle(calle_id)
+        # Si no se encuentra la calle, retorna un error
         if estado is None:
             return self._error(f"Calle no encontrada: {calle_id}")
 
         print(f"[QueryHandler] Consulta estado: {calle_id} → {estado}")
         return self._ok({"calle": estado.to_registro()})
 
+    # Manejador para consulta de todos los estados
     def _handle_todos_estados(self, solicitud: dict) -> dict:
-        """Retorna el estado actual de todas las calles del sistema."""
+        # Retorna el estado actual de todas las calles del sistema.
         estados = self._rules_engine.get_todos_estados()
         print(f"[QueryHandler] Consulta todos los estados ({len(estados)} calles)")
         return self._ok({"calles": estados})
 
+    # Manejador para consulta de intersección
     def _handle_interseccion(self, solicitud: dict) -> dict:
-        """
-        Retorna el estado de una intersección específica con sus semáforos.
-        Solicitud: { tipo, interseccion_id }
-        """
+        # Retorna el estado de una intersección específica con sus semáforos.
         int_id = solicitud.get("interseccion_id")
+        # Si no se proporciona interseccion_id, retorna un error
         if not int_id:
             return self._error("Falta campo interseccion_id")
 
+        # Obtiene la intersección
         interseccion = self._rules_engine.get_interseccion(int_id)
+        # Si no se encuentra la intersección, retorna un error
         if interseccion is None:
             return self._error(f"Intersección no encontrada: {int_id}")
 
         print(f"[QueryHandler] Consulta intersección: {interseccion}")
         return self._ok({"interseccion": interseccion.to_registro()})
 
+    # Crea y ejecuta una OrdenDirecta
     def _handle_orden_directa(self, solicitud: dict) -> dict:
-        """
-        Crea y ejecuta una OrdenDirecta.
-        Solicitud: { tipo, calle_id, accion, duracion_s, motivo }
-        """
         calle_id = solicitud.get("calle_id")
         accion_str = solicitud.get("accion", "OLA_VERDE")
         duracion_s = int(solicitud.get("duracion_s", 60))
         motivo = solicitud.get("motivo", "ORDEN_USUARIO")
 
+        # Si no se proporciona calle_id, retorna un error
         if not calle_id:
             return self._error("Falta campo calle_id en orden directa")
 
+        # Convierte la acción a EstadoTrafico
         try:
             accion = EstadoTrafico(accion_str)
         except ValueError:
             return self._error(f"Acción desconocida: {accion_str}")
 
+        # Crea la OrdenDirecta
         orden = OrdenDirecta(
             calle_id = calle_id,
             accion = accion,
@@ -183,29 +154,30 @@ class QueryHandler(threading.Thread):
             motivo = motivo,
         )
 
+        # Ejecuta la OrdenDirecta
         self.ejecutar_orden(orden)
 
+        # Retorna la respuesta
         print(f"[QueryHandler] Orden directa ejecutada: {orden}")
         return self._ok({
             "mensaje": f"OLA_VERDE activada en {calle_id} por {duracion_s}s",
             "orden": orden.to_registro(),
         })
 
-    # ------------------------------------------------------------------
-    # Helpers de serialización
-    # ------------------------------------------------------------------
-
+    # Deserializa el JSON de la solicitud
     def _parse_request(self, mensaje: str) -> dict | None:
-        """Deserializa el JSON de la solicitud. Retorna None si es inválido."""
         try:
             return json.loads(mensaje)
+        # Si hay error al deserializar, retorna un error
         except json.JSONDecodeError:
             print(f"[QueryHandler] ⚠ JSON inválido recibido: {mensaje[:100]}")
             return None
 
+    # Retorna una respuesta OK
     def _ok(self, datos: dict) -> dict:
         return {"estado": "OK", **datos}
 
+    # Retorna una respuesta de error
     def _error(self, mensaje: str) -> dict:
         print(f"[QueryHandler] Error: {mensaje}")
         return {"estado": "ERROR", "mensaje": mensaje}

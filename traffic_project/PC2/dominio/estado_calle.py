@@ -43,8 +43,9 @@ class EstadoCalle:
         """
         self.ts_ultimo_evento = evento.timestamp
 
+        # Actualizar atributos según el tipo de sensor
         if isinstance(evento, EventoCamara):
-            self.ultima_cola        = evento.volumen
+            self.ultima_cola = evento.volumen
             self.velocidad_promedio = evento.velocidad_promedio
 
         elif isinstance(evento, EventoEspira):
@@ -55,16 +56,17 @@ class EstadoCalle:
             # El GPS también reporta velocidad, actualizamos si es más reciente
             self.velocidad_promedio   = evento.velocidad_promedio
 
+
     def evaluar_estado(self) -> EstadoTrafico:
         """
         Aplica las reglas de tráfico y retorna el nuevo EstadoTrafico.
-        No modifica self.estado — eso lo hace RulesEngine después de comparar.
 
         Reglas (en orden de prioridad, la primera que se cumple gana):
           CONGESTION: cola alta Y velocidad baja Y GPS reporta ALTA
           NORMAL:     cola baja Y velocidad alta Y GPS no reporta ALTA
           Si no cumple ninguna completamente → mantiene el estado actual
         """
+        # Evaluar estado según las reglas
         if (
             self.ultima_cola > COLA_CONGESTION
             and self.velocidad_promedio < VEL_CONGESTION
@@ -82,11 +84,12 @@ class EstadoCalle:
         # No hay suficiente evidencia para cambiar → mantener estado actual
         return self.estado
 
+    # Verificar si la calle esta congestionada
     def esta_congestionada(self) -> bool:
         return self.estado == EstadoTrafico.CONGESTION
 
+    # Serializar el estado actual y persistirlo en la BD
     def to_registro(self) -> dict:
-        """Serializa el estado actual para persistirlo en la BD."""
         return {
             "calle_id":             self.calle_id,
             "tipo":                 self.tipo.value,
@@ -99,6 +102,7 @@ class EstadoCalle:
             "ts_ultimo_evento":     self.ts_ultimo_evento.isoformat(),
         }
 
+    # Representar el estado actual de la calle
     def __repr__(self) -> str:
         return (
             f"EstadoCalle({self.calle_id} | {self.estado.value} | "

@@ -8,16 +8,7 @@ class OrdenDirecta:
     Permite forzar un estado en una calle específica, ignorando las reglas
     automáticas mientras la orden esté activa.
 
-    Caso de uso típico: paso de ambulancia → ola verde en fila_C por 60 segundos.
-
-    RulesEngine revisa esta lista antes de evaluar las reglas automáticas.
-    Si existe una OrdenDirecta activa para la calle del evento, las reglas
-    automáticas se saltan y el estado forzado se mantiene.
-
-    Relaciones:
-        - Creada por QueryHandler al recibir solicitud del Monitoreo
-        - Gestionada por RulesEngine en su lista ordenes_activas
-        - Persistida por GestorSalida en ambas BDs
+    Caso: Paso de ambulancia → ola verde en fila_C por 60 segundos.
     """
 
     def __init__(
@@ -34,13 +25,15 @@ class OrdenDirecta:
         self.ts_inicio = datetime.now()
         self.ts_expiracion = self.ts_inicio + timedelta(seconds=duracion_s)
 
+    # Retorna True si la orden todavía no ha expirado
     def esta_activa(self) -> bool:
-        """Retorna True si la orden todavía no ha expirado."""
         return datetime.now() < self.ts_expiracion
 
+    # Retorna True si la orden ya expiró
     def esta_expirada(self) -> bool:
         return not self.esta_activa()
 
+    # Serializar el estado actual para persistirlo en la BD
     def to_registro(self) -> dict:
         return {
             "calle_id": self.calle_id,
@@ -51,6 +44,7 @@ class OrdenDirecta:
             "ts_expiracion": self.ts_expiracion.isoformat(),
         }
 
+    # Representar el estado actual de la orden
     def __repr__(self) -> str:
         restante = (self.ts_expiracion - datetime.now()).total_seconds()
         return (
