@@ -56,9 +56,8 @@ def main():
         hilo.start()
         print(f"[Main] Hilo iniciado: {hilo.name}")
 
-    print("[Main] Servicio de Analítica activo. Ctrl+C para detener.\n")
+    print("[Main] Servicio de Analítica activo.\n")
 
-    # 5. Manejar Ctrl+C para apagado ordenado
     def apagar(sig, frame):
         print("\n[Main] Señal de interrupción recibida — apagando...")
         for hilo in [event_receiver, query_handler, rules_engine, health_monitor]:
@@ -71,9 +70,13 @@ def main():
     signal.signal(signal.SIGINT,  apagar)
     signal.signal(signal.SIGTERM, apagar)
 
-    # Mantener el hilo principal vivo
-    while True:
-        time.sleep(1)
+    # 5. Mantener el hilo principal vivo de forma interrumpible
+    try:
+        while True:
+            time.sleep(1) # sleep permite que Python respire y detecte señales
+    except KeyboardInterrupt:
+        print("\n[Main] Apagando servicio de analítica (KeyboardInterrupt)...")
+        apagar(None, None) # Llamamos a la función de limpieza
 
 
 if __name__ == "__main__":

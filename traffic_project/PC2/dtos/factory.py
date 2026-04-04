@@ -13,9 +13,10 @@ def evento_desde_topico(topico: str, data: dict) -> Optional[EventoSensor]:
 
     # Diccionario de fábricas
     fabricas = {
-        TipoSensor.CAMARA.value: EventoCamara.from_json,
-        TipoSensor.ESPIRA.value: EventoEspira.from_json,
-        TipoSensor.GPS.value: EventoGPS.from_json,
+        "camara": EventoCamara.from_json,
+        "espira": EventoEspira.from_json,
+        "espira_inductiva": EventoEspira.from_json,
+        "gps": EventoGPS.from_json,
     }
 
     # Obtener la el tipo de evento del JSON para fabricar un eventoSensor correspondiente al tópico
@@ -28,6 +29,7 @@ def evento_desde_topico(topico: str, data: dict) -> Optional[EventoSensor]:
 
     # Validar que los datos del evento sean correctos
     if not evento.validar():
+        print(f"[factory] ⚠ Evento {topico} inválido por validación interna")
         return None
 
     # Retornar el evento

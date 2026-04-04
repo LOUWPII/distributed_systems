@@ -87,23 +87,46 @@ class QueryHandler(threading.Thread):
         # Llamado internamente por _handle_orden_directa().
         self._rules_engine.registrar_orden(orden)
 
-    # Manejador para consulta de estado actual
+        # Manejador para consulta de estado actual
     def _handle_estado_actual(self, solicitud: dict) -> dict:
-        # Retorna el estado actual de una calle específica.
-        # Solicitud: { tipo, calle_id }
+        """
+        Retorna el estado de tráfico. 
+        Ahora soporta IDs de tramos específicos (INT_XX_calle_YY) 
+        o IDs de calles generales (calle_YY).
+        """
         calle_id = solicitud.get("calle_id")
-        # Si no se proporciona calle_id, retorna un error
         if not calle_id:
             return self._error("Falta campo calle_id")
 
-        # Obtiene el estado de la calle
-        estado = self._rules_engine.get_estado_calle(calle_id)
-        # Si no se encuentra la calle, retorna un error
-        if estado is None:
-            return self._error(f"Calle no encontrada: {calle_id}")
+        # 1. Intentar buscar tramo específico en el diccionario de intersecciones
+        # Formato esperado: "INT_C1_fila_C"
+        for int_id, dic_calles in self._rules_engine._estados_interseccion.items():
+            for key_calle, estado in dic_calles.items():
+                if calle_id == f"{int_id}_{key_calle}":
+                    print(f"[QueryHandler] Consulta tramo exacto: {calle_id}")
+                    return self._ok({"calle": estado.to_registro()})
 
-        print(f"[QueryHandler] Consulta estado: {calle_id} → {estado}")
-        return self._ok({"calle": estado.to_registro()})
+        # 2. Si es una calle general (ej: "fila_C"), buscar el tramo con PEOR tráfico
+        # Esto mantiene compatibilidad con el dashboard macro de PC3
+        tramos_calle = []
+        for int_id, dic_calles in self._rules_engine._estados_interseccion.items():
+            if calle_id in dic_calles:
+                tramos_calle.append(dic_calles[calle_id])
+
+        if not tramos_calle:
+            return self._error(f"No se encontraron tramos para la calle: {calle_id}")
+
+        # Ordenar por severidad: CONGESTION > OLA_VERDE > NORMAL
+        # Devolvemos el tramo más crítico para avisar al usuario
+        peor_tramo = sorted(
+            tramos_calle, 
+            key=lambda x: (x.estado == EstadoTrafico.CONGESTION, x.ultima_cola), 
+            reverse=True
+        )[0]
+
+        print(f"[QueryHandler] Consulta calle macro {calle_id} -> Reportando tramo más crítico ({peor_tramo.calle_id})")
+        return self._ok({"calle": peor_tramo.to_registro()})
+
 
     # Manejador para consulta de todos los estados
     def _handle_todos_estados(self, solicitud: dict) -> dict:

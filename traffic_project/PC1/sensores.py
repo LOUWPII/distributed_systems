@@ -16,36 +16,25 @@ from sensor_logic import sensor_espira, sensor_camara, sensor_gps
 
 
 def hilo_publicador(config, cola_eventos):
-    """
-    Único componente que toca el socket ZMQ PUB.
-    Saca eventos de la cola y los despacha al broker.
-    """
     context = zmq.Context()
     pub_socket = context.socket(zmq.PUB)
-
-    # Conexión al puerto SUB del broker (ej: 5550)
-    #Comentamos para pruebas
-    #broker_ip = config['red']['pc1_ip']
-    #broker_port = config['broker']['sub_port']
-    #pub_socket.connect(f"tcp://{broker_ip}:{broker_port}")
     pub_socket.connect("tcp://localhost:5550")
-
-    #print(f"[PUB] Hilo iniciado. Conectado al broker en {broker_ip}:{broker_port}")
-    print(f"[PUB] Hilo iniciado. Conectado al broker en localhost con el puerto 5550")
+    print(f"[PUB] Hilo iniciado — Conectado al broker en 5550")
 
     while True:
-        # Bloquea hasta que haya un evento disponible en la cola
         evento = cola_eventos.get()
 
-        # Determinar tópico según tipo: sensor.espira_inductiva, sensor.camara, etc.
-        topico = f"sensor.{evento['tipo_sensor']}"
+        # Debe coincidir con lo que espera PC2: 'camara', 'espira_inductiva' o 'gps'
+        topico = evento['tipo_sensor'] 
         payload = json.dumps(evento)
 
-        # Enviar mensaje con el formato 'topico payload'
-        pub_socket.send_string(f"{topico} {payload}")
+        # Esto es lo que el Broker y PC2 esperan recibir.
+        pub_socket.send_multipart([
+            topico.encode('utf-8'), 
+            payload.encode('utf-8')
+        ])
 
-        # Loguear operación según requerimiento del enunciado
-        print(f"[PUB] Enviado: {evento['sensor_id']} -> {topico}")
+        print(f"[PUB] Enviado Multiparte: {evento['sensor_id']} -> Tópico: {topico}")
         cola_eventos.task_done()
 
 
@@ -77,7 +66,7 @@ def main():
     intervalo_global = config['parametros_simulacion']['intervalo_sensores_s']
 
     for s_cfg in config['sensores']:
-        tipo = s_cfg['tipo_sensor']
+        tipo = s_cfg.get('tipo') or s_cfg.get('tipo_sensor')
         if tipo in clases_sensores:
             # Crear instancia pasándole referencias a memoria compartida
             sensor_inst = clases_sensores[tipo](s_cfg, city_manag, cola_compartida, intervalo_global)
