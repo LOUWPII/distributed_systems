@@ -21,20 +21,7 @@ class EventoEspira(EventoSensor):
         self.vehiculos_contados = vehiculos_contados
         self.intervalo_s = intervalo_s
 
-    def validar(self) -> bool:
-        return (
-            0 <= self.vehiculos_contados <= 200
-            and self.intervalo_s > 0
-        )
-
-    def to_registro(self) -> dict:
-        return {
-            **self._campos_base(),
-            "tipo_sensor": TipoSensor.ESPIRA.value,
-            "vehiculos_contados": self.vehiculos_contados,
-            "intervalo_s": self.intervalo_s,
-        }
-
+    # Crear un EventoEspira a partir de un JSON
     @classmethod
     def from_json(cls, data: dict) -> "EventoEspira":
         return cls(
@@ -45,3 +32,19 @@ class EventoEspira(EventoSensor):
             vehiculos_contados = int(data["vehiculos_contados"]),
             intervalo_s = int(data["intervalo_segundos"]),
         )
+
+    # Validar que los datos del evento sean correctos
+    def validar(self) -> bool:
+        return (
+            0 <= self.vehiculos_contados <= 200
+            and self.intervalo_s > 0
+        )
+
+    # Serializar el estado actual para persistirlo en la BD
+    def to_registro(self) -> dict:
+        return {
+            **self._campos_base(),
+            "tipo_sensor": TipoSensor.ESPIRA.value,
+            "vehiculos_contados": self.vehiculos_contados,
+            "intervalo_s": self.intervalo_s,
+        }

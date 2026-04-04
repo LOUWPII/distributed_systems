@@ -15,10 +15,6 @@ class Semaforo:
 
     La clase Interseccion es la responsable de garantizar la exclusión mutua
     (nunca dos semáforos del mismo cruce en verde al mismo tiempo).
-
-    Relaciones:
-        - Compuesto por Interseccion (2 por intersección, uno por calle)
-        - Agrega EstadoCalle (pertenece a una calle)
     """
 
     def __init__(

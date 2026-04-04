@@ -22,20 +22,7 @@ class EventoGPS(EventoSensor):
         self.nivel_congestion   = nivel_congestion
         self.velocidad_promedio = velocidad_promedio
 
-    def validar(self) -> bool:
-        return (
-            self.nivel_congestion in ("ALTA", "NORMAL", "BAJA")
-            and 0.0 <= self.velocidad_promedio <= 50.0
-        )
-
-    def to_registro(self) -> dict:
-        return {
-            **self._campos_base(),
-            "tipo_sensor": TipoSensor.GPS.value,
-            "nivel_congestion": self.nivel_congestion,
-            "velocidad_promedio": self.velocidad_promedio,
-        }
-
+    # Crear un EventoGPS a partir de un JSON
     @classmethod
     def from_json(cls, data: dict) -> "EventoGPS":
         return cls(
@@ -46,3 +33,19 @@ class EventoGPS(EventoSensor):
             nivel_congestion = data["nivel_congestion"],
             velocidad_promedio = float(data["velocidad_promedio"]),
         )
+
+    # Validar que los datos del evento sean correctos
+    def validar(self) -> bool:
+        return (
+            self.nivel_congestion in ("ALTA", "NORMAL", "BAJA")
+            and 0.0 <= self.velocidad_promedio <= 50.0
+        )
+
+    # Serializar el estado actual para persistirlo en la BD
+    def to_registro(self) -> dict:
+        return {
+            **self._campos_base(),
+            "tipo_sensor": TipoSensor.GPS.value,
+            "nivel_congestion": self.nivel_congestion,
+            "velocidad_promedio": self.velocidad_promedio,
+        }

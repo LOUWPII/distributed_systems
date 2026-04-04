@@ -21,20 +21,8 @@ class EventoCamara(EventoSensor):
         self.volumen = volumen
         self.velocidad_promedio = velocidad_promedio
 
-    def validar(self) -> bool:
-        return (
-            0 <= self.volumen <= 100
-            and 0.0 <= self.velocidad_promedio <= 50.0
-        )
-
-    def to_registro(self) -> dict:
-        return {
-            **self._campos_base(),
-            "tipo_sensor": TipoSensor.CAMARA.value,
-            "volumen": self.volumen,
-            "velocidad_promedio": self.velocidad_promedio,
-        }
-
+    
+    # Crear un EventoCamara a partir de un JSON
     @classmethod
     def from_json(cls, data: dict) -> "EventoCamara":
         return cls(
@@ -45,3 +33,19 @@ class EventoCamara(EventoSensor):
             volumen = int(data["volumen"]),
             velocidad_promedio = float(data["velocidad_promedio"]),
         )
+
+    # Validar que los datos del evento sean correctos
+    def validar(self) -> bool:
+        return (
+            0 <= self.volumen <= 100
+            and 0.0 <= self.velocidad_promedio <= 50.0
+        )
+
+    # Serializar el estado actual para persistirlo en la BD
+    def to_registro(self) -> dict:
+        return {
+            **self._campos_base(),
+            "tipo_sensor": TipoSensor.CAMARA.value,
+            "volumen": self.volumen,
+            "velocidad_promedio": self.velocidad_promedio,
+        }

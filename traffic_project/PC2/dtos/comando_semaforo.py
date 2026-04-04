@@ -29,6 +29,7 @@ class ComandoSemaforo:
             "timestamp": self.timestamp.isoformat(),
         })
 
+    # Crear un ComandoSemaforo a partir de un JSON
     @classmethod
     def from_json(cls, raw: str) -> "ComandoSemaforo":
         data = json.loads(raw)
@@ -42,6 +43,7 @@ class ComandoSemaforo:
             timestamp     = datetime.fromisoformat(data["timestamp"]),
         )
 
+    # Representación en string del ComandoSemaforo
     def __repr__(self) -> str:
         return (
             f"ComandoSemaforo("

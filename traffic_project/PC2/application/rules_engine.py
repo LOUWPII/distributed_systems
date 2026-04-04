@@ -1,22 +1,3 @@
-"""
-RulesEngine — Motor de reglas del Servicio de Analítica.
-
-Es el componente central del sistema. Corre en su propio hilo consumiendo
-eventos de la event_queue y tomando decisiones sobre el tráfico.
-
-Responsabilidades:
-  1. Mantener el estado actualizado de cada calle con sensores
-  2. Evaluar las reglas de tráfico después de cada evento
-  3. Detectar cambios de estado y generar los comandos de semáforo
-  4. Gestionar las órdenes directas del usuario (prioridad sobre reglas)
-  5. Aplicar ola verde en una calle (todos sus semáforos en verde)
-
-Comunicación interna:
-  - Lee EventoSensor de event_queue (compartida con EventReceiver)
-  - Llama a GestorSalida para enviar comandos y persistir datos
-  - Expone get_estado_calle() para que QueryHandler consulte estados
-"""
-
 import queue
 import threading
 from datetime import datetime
@@ -38,6 +19,7 @@ from enums import EstadoSemaforo, EstadoTrafico, TipoCalle
 # Aquí asumo que dejarás GestorSalida en servicios o lo mandarás a infrastructure/
 from infrastructure.gestor_salida import GestorSalida
 
+# 
 class RulesEngine(threading.Thread):
     """
     Hilo principal de procesamiento de eventos y toma de decisiones.
@@ -77,19 +59,13 @@ class RulesEngine(threading.Thread):
 
         self._inicializar_desde_config()
 
-    # ------------------------------------------------------------------
-    # Inicialización desde configuración
-    # ------------------------------------------------------------------
-
+    # Construye el estado inicial del sistema a partir del config.json
     def _inicializar_desde_config(self) -> None:
-        """
-        Construye los EstadoCalle e Interseccion a partir del config.json.
-        Esto define el mapa completo de la ciudad antes de recibir eventos.
-        """
         # Crear un EstadoCalle por cada calle única que aparece en los sensores
         for sensor in self._config.sensores:
             calle_id = sensor["calle_id"]
             tipo_str = sensor["direccion"]  # "fila" o "columna"
+            # Si no existe la calle, se crea
             if calle_id not in self._estados_calle:
                 tipo = TipoCalle.FILA if tipo_str == "fila" else TipoCalle.COLUMNA
                 self._estados_calle[calle_id] = EstadoCalle(calle_id, tipo)
@@ -100,6 +76,7 @@ class RulesEngine(threading.Thread):
             calle_fila = item["calle_fila"]
             calle_col = item["calle_columna"]
 
+            # Se crea un semaforo para la calle fila y otro para la calle columna
             semaforo_fila = Semaforo(
                 semaforo_id = f"SEM-F-{int_id}",
                 calle_id = calle_fila,
@@ -112,6 +89,7 @@ class RulesEngine(threading.Thread):
                 interseccion_id = int_id,
                 estado_inicial = EstadoSemaforo.ROJO,
             )
+            # Se crea una interseccion con sus dos semaforos
             self._intersecciones[int_id] = Interseccion(
                 interseccion_id = int_id,
                 semaforo_fila = semaforo_fila,
@@ -121,10 +99,7 @@ class RulesEngine(threading.Thread):
         print(f"[RulesEngine] {len(self._estados_calle)} calles cargadas")
         print(f"[RulesEngine] {len(self._intersecciones)} intersecciones cargadas")
 
-    # ------------------------------------------------------------------
     # Ciclo principal del hilo
-    # ------------------------------------------------------------------
-
     def run(self) -> None:
         print("[RulesEngine] Iniciado — esperando eventos")
         while self._activo:
@@ -136,54 +111,45 @@ class RulesEngine(threading.Thread):
             except queue.Empty:
                 # No llegó nada en 1 segundo → limpiar órdenes expiradas
                 self._limpiar_ordenes_expiradas()
+            # Si hay un error, se imprime
             except Exception as e:
                 print(f"[RulesEngine] Error procesando evento: {e}")
 
         print("[RulesEngine] Detenido")
 
+    # Detiene el hilo
     def detener(self) -> None:
         self._activo = False
 
-    # ------------------------------------------------------------------
-    # Procesamiento de eventos
-    # ------------------------------------------------------------------
-
+    # Procesa un evento recibido
     def procesar_evento(self, evento: EventoSensor) -> None:
-        """
-        Punto de entrada principal para cada evento recibido.
-        Orden de operaciones:
-          1. Limpiar órdenes expiradas
-          2. Verificar si la calle del evento existe en el mapa
-          3. Actualizar el EstadoCalle con los datos del evento
-          4. Persistir el evento en las BDs
-          5. Evaluar si el estado del tráfico cambia
-        """
+        # 1. Limpiar órdenes expiradas
         self._limpiar_ordenes_expiradas()
 
         calle_id = evento.calle_id
+        # 2. Verificar si la calle del evento existe en el mapa
         if calle_id not in self._estados_calle:
-            print(f"[RulesEngine] Evento de calle desconocida: {calle_id}")
+            print(f"[RulesEngine] ⚠ Evento de calle desconocida: {calle_id}")
             return
 
         estado = self._estados_calle[calle_id]
+        # 3. Actualizar el EstadoCalle con los datos del evento
         estado.actualizar(evento)
+        # 4. Persistir el evento en las BDs
         self._gestor.persistir_evento(evento)
 
         print(
             f"[RulesEngine] Evento recibido: {evento} | "
             f"cola={estado.ultima_cola} vel={estado.velocidad_promedio:.1f}km/h"
         )
-
+        # 5. Evaluar si el estado del tráfico cambia
         self.evaluar_calle(estado)
 
-    def evaluar_calle(self, estado: EstadoCalle) -> None:
-        """
-        Evalúa las reglas para una calle y actúa si el estado cambió.
 
-        Prioridad:
-          1. Orden directa activa → mantener OLA_VERDE, no evaluar reglas
-          2. Reglas automáticas   → CONGESTION o NORMAL según umbrales
-        """
+    # Cambiar orden 2,4,1,3,5
+
+    # Evalúa las reglas para una calle y actúa si el estado cambió
+    def evaluar_calle(self, estado: EstadoCalle) -> None:
         # Prioridad 1: verificar si hay una orden directa activa para esta calle
         with self._lock_ordenes:
             orden_activa = next(
@@ -231,25 +197,16 @@ class RulesEngine(threading.Thread):
             motivo = motivo,
         )
 
-    # ------------------------------------------------------------------
-    # Control de semáforos
-    # ------------------------------------------------------------------
-
+    # Aplica una ola verde a una calle
     def aplicar_ola_verde(
         self,
         calle_id: str,
         duracion_s: int = DURACION_OLA_VERDE_S,
         motivo: str = "OLA_VERDE",
     ) -> None:
-        """
-        Pone en VERDE todos los semáforos de la calle indicada
-        en cada intersección donde esa calle tiene semáforo.
-        Las calles cruzadas quedan automáticamente en ROJO (exclusión mutua).
 
-        Este método es llamado por:
-          - evaluar_calle() cuando detecta CONGESTION automáticamente
-          - QueryHandler cuando recibe una OrdenDirecta del usuario
-        """
+        # Pone en VERDE todos los semáforos de la calle indicada en cada intersección donde esa calle tiene semáforo.
+        # Las calles cruzadas quedan automáticamente en ROJO (exclusión mutua).
         comandos_enviados = 0
 
         for interseccion in self._intersecciones.values():
@@ -257,8 +214,7 @@ class RulesEngine(threading.Thread):
             if semaforo is None:
                 continue  # Esta intersección no tiene la calle indicada
 
-            # Determinar si la calle es fila o columna para llamar
-            # al método correcto de Interseccion (garantiza exclusión mutua)
+            # Determinar si la calle es fila o columna para llamar al método correcto de Interseccion (garantiza exclusión mutua)
             if semaforo.calle_id == interseccion.semaforo_fila.calle_id:
                 interseccion.set_verde_fila(duracion_s)
             else:
@@ -281,16 +237,16 @@ class RulesEngine(threading.Thread):
             f"{comandos_enviados} comandos enviados | duración={duracion_s}s"
         )
 
+    # Aplica un ciclo normal a una calle indicada
     def _aplicar_ciclo_normal(self, calle_id: str, motivo: str) -> None:
-        """
-        Restaura el ciclo estándar de 15 segundos en la calle indicada.
-        Llamado cuando el estado vuelve a NORMAL.
-        """
+        # Aplica un ciclo normal a una calle indicada
         for interseccion in self._intersecciones.values():
             semaforo = interseccion.get_semaforo(calle_id)
+            # Si la calle no tiene semáforo en esta intersección, continuar
             if semaforo is None:
                 continue
 
+            # Determinar si la calle es fila o columna para llamar
             if semaforo.calle_id == interseccion.semaforo_fila.calle_id:
                 interseccion.set_verde_fila(DURACION_NORMAL_S)
             else:
@@ -298,16 +254,10 @@ class RulesEngine(threading.Thread):
 
             self._gestor.enviar_cmd(semaforo.to_comando(motivo))
 
-    # ------------------------------------------------------------------
     # Gestión de órdenes directas
-    # ------------------------------------------------------------------
-
     def registrar_orden(self, orden: OrdenDirecta) -> None:
-        """
-        Registra una OrdenDirecta y aplica inmediatamente la ola verde.
-        Llamado por QueryHandler cuando llega una instrucción del usuario.
-        Thread-safe: usa _lock_ordenes.
-        """
+        # Registra una OrdenDirecta y aplica inmediatamente la ola verde.
+        # Thread-safe: usa _lock_ordenes.
         with self._lock_ordenes:
             self._ordenes_activas.append(orden)
 
@@ -321,30 +271,28 @@ class RulesEngine(threading.Thread):
 
         print(f"[RulesEngine] Orden directa registrada: {orden}")
 
+    # Elimina las órdenes que ya expiraron y restaura el ciclo normal
     def _limpiar_ordenes_expiradas(self) -> None:
-        """
-        Elimina las órdenes que ya expiraron y restaura el ciclo normal
-        en las calles afectadas.
-        """
         with self._lock_ordenes:
             expiradas = [o for o in self._ordenes_activas if o.esta_expirada()]
             self._ordenes_activas = [o for o in self._ordenes_activas if o.esta_activa()]
 
+        # Restaurar ciclo normal en calles con órdenes expiradas
         for orden in expiradas:
             print(f"[RulesEngine] Orden expirada: {orden} → restaurando ciclo normal")
+            # Actualizar el estado en memoria
             if orden.calle_id in self._estados_calle:
                 self._estados_calle[orden.calle_id].estado = EstadoTrafico.NORMAL
             self._aplicar_ciclo_normal(orden.calle_id, "ORDEN_EXPIRADA")
 
-    # ------------------------------------------------------------------
-    # Consultas — llamadas por QueryHandler
-    # ------------------------------------------------------------------
-
+    # Retorna el estado actual de una calle específica
     def get_estado_calle(self, calle_id: str) -> Optional[EstadoCalle]:
         return self._estados_calle.get(calle_id)
 
+    # Retorna el estado actual de todas las calles
     def get_todos_estados(self) -> dict:
         return {k: v.to_registro() for k, v in self._estados_calle.items()}
 
+    # Retorna una intersección específica
     def get_interseccion(self, interseccion_id: str) -> Optional[Interseccion]:
         return self._intersecciones.get(interseccion_id)
