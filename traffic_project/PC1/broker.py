@@ -8,8 +8,8 @@ class BrokerZMQ:
     def __init__(self, config):
         """Inicializa configuración y contadores ."""
         self.config = config
-        self.modo = config['broker']['modo']  # 'simple' o 'multihilos'
-        self.topicos = config['broker']['topicos']
+        self.modo = config['modo_broker']  # 'simple' o 'multihilos'
+        self.topicos = config['sensores_topicos']
         self.contadores = {t: 0 for t in self.topicos}
 
         # En modo simple, los sockets son globales al objeto [7]

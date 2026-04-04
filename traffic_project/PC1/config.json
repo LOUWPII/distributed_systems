@@ -49,16 +49,5 @@
       "direccion": "columna",
       "estado_inicial": "VERDE"
     }
-  ],
-  "broker": {
-    "modo": "simple",
-    "sub_port": 5550,
-    "pub_port": 5551
-  },
-  "red": {
-    "pc1_ip": "x.x.x.x",
-    "pc2_ip": "x.x.x.x",
-    "pc3_ip": "x.x.x.x",
-    "control_semaforos_port": 5555
-  }
+  ]
 }
