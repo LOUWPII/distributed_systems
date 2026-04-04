@@ -8,8 +8,8 @@ class BrokerZMQ:
     def __init__(self, config):
         """Inicializa configuración y contadores ."""
         self.config = config
-        self.modo = config['broker']['modo']  # 'simple' o 'multihilos'
-        self.topicos = config['broker']['topicos']
+        self.modo = config.get('modo_broker', 'simple')  # 'simple' o 'multihilos'
+        self.topicos = list(config['sensores_topicos'].values())
         self.contadores = {t: 0 for t in self.topicos}
 
         # En modo simple, los sockets son globales al objeto [7]
@@ -22,13 +22,13 @@ class BrokerZMQ:
         # Frontend: Recibe de sensores (SUB)
         self.sub_socket = self.context.socket(zmq.SUB)
         #self.sub_socket.bind(f"tcp://*:{self.config['broker']['sub_port']}")
-        self.sub_socket.bind(f"tcp://*:5550")
+        self.sub_socket.bind(self.config['red']['sensor_broker_url_PUB'])
         for t in self.topicos:
             self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, t)
 
         # Backend: Publica hacia PC2 (PUB)
         self.pub_socket = self.context.socket(zmq.PUB)
-        self.pub_socket.bind(f"tcp://*:{self.config['broker']['pub_port']}")
+        self.pub_socket.bind(self.config['red']['broker_analitica_url_PUB'])
 
     def _validar(self, topico, evento):
         """Validación del JSON."""
@@ -123,12 +123,40 @@ class BrokerZMQ:
         threading.Event().wait()  # Bloquea el hilo principal
 
     def iniciar(self):
-        """Punto de entrada principal."""
-        if self.modo == 'simple':
-            self._loop_simple()
-        else:
-            self._loop_multihilos()
+        # Configurar timeout para poder capturar Ctrl+C en Windows
+        self.sub_socket.setsockopt(zmq.RCVTIMEO, 1000)
+        
+        print(f"[Broker] Iniciando Modo Simple (1 hilo)... Ctrl+C para salir.")
+        
+        try:
+            while True:
+                try:
+                    # Recibir el mensaje multiparte: [Tópico, Cuerpo JSON]
+                    partes = self.sub_socket.recv_multipart()
+                    if len(partes) < 2:
+                        continue
+                    
+                    topico = partes[0].decode('utf-8')
+                    cuerpo = partes[1].decode('utf-8')
 
+                    # Solo validamos el cuerpo JSON REAL (la parte 2)
+                    if self._validar(topico, cuerpo):
+                        # Reenviar el mensaje original TAL CUAL a PC2
+                        self.pub_socket.send_multipart(partes)
+                        print(f"[Broker] >> Reenviado evento: {topico}")
+                    else:
+                        print(f"[Broker] ⚠ Error: Cuerpo de mensaje inválido en {topico}")
+                        
+                except zmq.Again:
+                    # No han llegado mensajes en 1s, el bucle sigue permitiendo Ctrl+C
+                    continue
+                    
+        except KeyboardInterrupt:
+            print("\n[Broker] Finalizado por el usuario.")
+        finally:
+            self.sub_socket.close()
+            self.pub_socket.close()
+            self.context.term()
 
 if __name__ == "__main__":
     with open('config.json', 'r') as f:

@@ -1,6 +1,6 @@
 import queue
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from config import Config
 # Imports desde tu nueva estructura de dominio
@@ -52,8 +52,8 @@ class RulesEngine(threading.Thread):
         # Lock para ordenes_activas: es modificada por QueryHandler (hilo distinto)
         self._lock_ordenes = threading.Lock()
 
-        # Estado del tráfico por calle — se inicializa desde config
-        self._estados_calle: dict[str, EstadoCalle] = {}
+        # Estado del tráfico por interseccion y calle — se inicializa desde config
+        self._estados_interseccion: dict[str, dict[str, EstadoCalle]] = {}
         self._intersecciones: dict[str, Interseccion] = {}
         self._ordenes_activas: list[OrdenDirecta] = []
 
@@ -61,14 +61,18 @@ class RulesEngine(threading.Thread):
 
     # Construye el estado inicial del sistema a partir del config.json
     def _inicializar_desde_config(self) -> None:
-        # Crear un EstadoCalle por cada calle única que aparece en los sensores
+        # Crear diccionarios de EstadoCalle por cada intersección
         for sensor in self._config.sensores:
             calle_id = sensor["calle_id"]
+            int_id = sensor.get("interseccion") or sensor.get("interseccion_id", "")
             tipo_str = sensor["direccion"]  # "fila" o "columna"
-            # Si no existe la calle, se crea
-            if calle_id not in self._estados_calle:
+            
+            if int_id not in self._estados_interseccion:
+                self._estados_interseccion[int_id] = {}
+
+            if calle_id not in self._estados_interseccion[int_id]:
                 tipo = TipoCalle.FILA if tipo_str == "fila" else TipoCalle.COLUMNA
-                self._estados_calle[calle_id] = EstadoCalle(calle_id, tipo)
+                self._estados_interseccion[int_id][calle_id] = EstadoCalle(calle_id, tipo)
 
         # Crear las Interseccion con sus dos Semaforo
         for item in self._config.intersecciones:
@@ -96,8 +100,8 @@ class RulesEngine(threading.Thread):
                 semaforo_columna = semaforo_col,
             )
 
-        print(f"[RulesEngine] {len(self._estados_calle)} calles cargadas")
-        print(f"[RulesEngine] {len(self._intersecciones)} intersecciones cargadas")
+        print(f"[RulesEngine] Dics de {len(self._estados_interseccion)} intersecciones cargados")
+        print(f"[RulesEngine] {len(self._intersecciones)} intersecciones físicas cargadas")
 
     # Ciclo principal del hilo
     def run(self) -> None:
@@ -105,17 +109,14 @@ class RulesEngine(threading.Thread):
         while self._activo:
             try:
                 # get() bloquea hasta que haya un evento en la cola
-                # timeout=1s permite revisar self._activo periódicamente
                 evento = self._event_queue.get(timeout=1.0)
                 self.procesar_evento(evento)
             except queue.Empty:
-                # No llegó nada en 1 segundo → limpiar órdenes expiradas
+                # Limpieza proactiva en tiempos muertos
                 self._limpiar_ordenes_expiradas()
-            # Si hay un error, se imprime
+                self._limpiar_estados_por_timeout()
             except Exception as e:
                 print(f"[RulesEngine] Error procesando evento: {e}")
-
-        print("[RulesEngine] Detenido")
 
     # Detiene el hilo
     def detener(self) -> None:
@@ -127,30 +128,36 @@ class RulesEngine(threading.Thread):
         self._limpiar_ordenes_expiradas()
 
         calle_id = evento.calle_id
-        # 2. Verificar si la calle del evento existe en el mapa
-        if calle_id not in self._estados_calle:
-            print(f"[RulesEngine] ⚠ Evento de calle desconocida: {calle_id}")
+        int_id = evento.interseccion_id
+
+        # 2. Verificar si la calle en esta intersección existe en el mapa
+        if int_id not in self._estados_interseccion or calle_id not in self._estados_interseccion[int_id]:
+            print(f"[RulesEngine] ⚠ Evento de tramo desconocido: INT={int_id} CALLE={calle_id}")
             return
 
-        estado = self._estados_calle[calle_id]
-        # 3. Actualizar el EstadoCalle con los datos del evento
+        estado = self._estados_interseccion[int_id][calle_id]
+        
+        # 3. Actualizar el EstadoCalle del tramo específico con los datos del evento
         estado.actualizar(evento)
+        
         # 4. Persistir el evento en las BDs
         self._gestor.persistir_evento(evento)
 
         print(
             f"[RulesEngine] Evento recibido: {evento} | "
-            f"cola={estado.ultima_cola} vel={estado.velocidad_promedio:.1f}km/h"
+            f"INT={int_id} cola={estado.ultima_cola} vel={estado.velocidad_promedio:.1f}km/h"
         )
-        # 5. Evaluar si el estado del tráfico cambia
-        self.evaluar_calle(estado)
+        
+        # 5. Evaluar si el estado del tráfico cambia (comportamiento micro)
+        self.evaluar_micro(int_id, estado)
 
 
     # Cambiar orden 2,4,1,3,5
 
-    # Evalúa las reglas para una calle y actúa si el estado cambió
-    def evaluar_calle(self, estado: EstadoCalle) -> None:
+    # Evalúa las reglas a nivel micro (por intersección) y actúa si el estado cambió
+    def evaluar_micro(self, interseccion_id: str, estado: EstadoCalle) -> None:
         # Prioridad 1: verificar si hay una orden directa activa para esta calle
+        # (Las órdenes directas operan a nivel macro todavía)
         with self._lock_ordenes:
             orden_activa = next(
                 (o for o in self._ordenes_activas if o.calle_id == estado.calle_id and o.esta_activa()),
@@ -158,7 +165,7 @@ class RulesEngine(threading.Thread):
             )
 
         if orden_activa is not None:
-            # Hay orden directa activa → no cambiar el estado automáticamente
+            # Hay orden directa activa en toda la avenida → no cambiar individualmente
             return
 
         # Prioridad 2: evaluar reglas automáticas
@@ -170,10 +177,10 @@ class RulesEngine(threading.Thread):
 
         # El estado cambió → actualizar, actuar y persistir
         estado.estado = estado_nuevo
-        motivo = f"Regla automática: {estado_anterior.value} → {estado_nuevo.value}"
+        motivo = f"Regla automática micro: {estado_anterior.value} → {estado_nuevo.value}"
 
         print(
-            f"[RulesEngine] Cambio de estado: {estado.calle_id} | "
+            f"[RulesEngine] Cambio de estado MICRO: INT={interseccion_id} CALLE={estado.calle_id} | "
             f"{estado_anterior.value} → {estado_nuevo.value}"
         )
 
@@ -185,19 +192,79 @@ class RulesEngine(threading.Thread):
         )
 
         if estado_nuevo in (EstadoTrafico.CONGESTION, EstadoTrafico.OLA_VERDE):
-            self.aplicar_ola_verde(estado.calle_id, duracion, motivo)
+            self.aplicar_verde_micro(interseccion_id, estado.calle_id, duracion, motivo)
         else:
-            # NORMAL: restaurar ciclo estándar (verde en calle, rojo en cruzadas)
-            self._aplicar_ciclo_normal(estado.calle_id, motivo)
+            # NORMAL: restaurar ciclo estándar localmente
+            self._aplicar_ciclo_normal_micro(interseccion_id, estado.calle_id, motivo)
 
+        # Usamos tramo_id para la persistencia del cambio de estado específico
+        tramo_id = f"{interseccion_id}_{estado.calle_id}"
         self._gestor.persistir_cambio(
-            calle_id = estado.calle_id,
+            calle_id = tramo_id,
             estado_anterior = estado_anterior.value,
             estado_nuevo = estado_nuevo.value,
             motivo = motivo,
         )
 
-    # Aplica una ola verde a una calle
+    # Aplica luz verde a un semáforo específico (comportamiento Micro)
+    def aplicar_verde_micro(
+        self,
+        interseccion_id: str,
+        calle_id: str,
+        duracion_s: int = DURACION_OLA_VERDE_S,
+        motivo: str = "VERDE_MICRO",
+    ) -> None:
+        
+        interseccion = self._intersecciones.get(interseccion_id)
+        if not interseccion:
+            return
+
+        semaforo = interseccion.get_semaforo(calle_id)
+        if not semaforo:
+            return
+
+        # Determinar si la calle es fila o columna localmente para exclusión mutua
+        if semaforo.calle_id == interseccion.semaforo_fila.calle_id:
+            interseccion.set_verde_fila(duracion_s)
+        else:
+            interseccion.set_verde_columna(duracion_s)
+
+        # Enviar comandos de actualización de luces
+        self._gestor.enviar_cmd(semaforo.to_comando(motivo))
+
+        semaforo_cruzado = interseccion.get_semaforo_cruzado(calle_id)
+        if semaforo_cruzado:
+            self._gestor.enviar_cmd(semaforo_cruzado.to_comando(motivo))
+
+        print(
+            f"[RulesEngine] Verde micro aplicado en INT={interseccion_id} CALLE={calle_id} | "
+            f"duración={duracion_s}s"
+        )
+        
+    # Restaura ciclo normal en un semáforo específico (comportamiento Micro)
+    def _aplicar_ciclo_normal_micro(
+        self, 
+        interseccion_id: str, 
+        calle_id: str, 
+        motivo: str
+    ) -> None:
+        
+        interseccion = self._intersecciones.get(interseccion_id)
+        if not interseccion:
+            return
+
+        semaforo = interseccion.get_semaforo(calle_id)
+        if not semaforo:
+            return
+
+        if semaforo.calle_id == interseccion.semaforo_fila.calle_id:
+            interseccion.set_verde_fila(DURACION_NORMAL_S)
+        else:
+            interseccion.set_verde_columna(DURACION_NORMAL_S)
+
+        self._gestor.enviar_cmd(semaforo.to_comando(motivo))
+
+    # Aplica una ola verde a TODA una calle (comportamiento Macro para órdenes manuales)
     def aplicar_ola_verde(
         self,
         calle_id: str,
@@ -208,7 +275,6 @@ class RulesEngine(threading.Thread):
         # Pone en VERDE todos los semáforos de la calle indicada en cada intersección donde esa calle tiene semáforo.
         # Las calles cruzadas quedan automáticamente en ROJO (exclusión mutua).
         comandos_enviados = 0
-
         for interseccion in self._intersecciones.values():
             semaforo = interseccion.get_semaforo(calle_id)
             if semaforo is None:
@@ -224,7 +290,6 @@ class RulesEngine(threading.Thread):
             comando = semaforo.to_comando(motivo)
             self._gestor.enviar_cmd(comando)
 
-            # También enviar comando para el semáforo cruzado (ROJO)
             semaforo_cruzado = interseccion.get_semaforo_cruzado(calle_id)
             if semaforo_cruzado:
                 cmd_cruzado = semaforo_cruzado.to_comando(motivo)
@@ -233,11 +298,11 @@ class RulesEngine(threading.Thread):
             comandos_enviados += 2
 
         print(
-            f"[RulesEngine] Ola verde aplicada en {calle_id} | "
+            f"[RulesEngine] Ola verde Macro aplicada en {calle_id} | "
             f"{comandos_enviados} comandos enviados | duración={duracion_s}s"
         )
 
-    # Aplica un ciclo normal a una calle indicada
+    # Aplica un ciclo normal a TODA una calle indicada
     def _aplicar_ciclo_normal(self, calle_id: str, motivo: str) -> None:
         # Aplica un ciclo normal a una calle indicada
         for interseccion in self._intersecciones.values():
@@ -261,11 +326,12 @@ class RulesEngine(threading.Thread):
         with self._lock_ordenes:
             self._ordenes_activas.append(orden)
 
-        # Actualizar el estado en memoria
-        if orden.calle_id in self._estados_calle:
-            self._estados_calle[orden.calle_id].estado = EstadoTrafico.OLA_VERDE
+        # Actualizar el estado en memoria para cada tramo de la calle en cada intersección
+        for int_id, dic_calles in self._estados_interseccion.items():
+            if orden.calle_id in dic_calles:
+                dic_calles[orden.calle_id].estado = EstadoTrafico.OLA_VERDE
 
-        # Aplicar inmediatamente los cambios en los semáforos
+        # Aplicar inmediatamente los cambios en los semáforos (a nivel Macro)
         self.aplicar_ola_verde(orden.calle_id, orden.duracion_s, orden.motivo)
         self._gestor.persistir_orden(orden)
 
@@ -280,18 +346,52 @@ class RulesEngine(threading.Thread):
         # Restaurar ciclo normal en calles con órdenes expiradas
         for orden in expiradas:
             print(f"[RulesEngine] Orden expirada: {orden} → restaurando ciclo normal")
-            # Actualizar el estado en memoria
-            if orden.calle_id in self._estados_calle:
-                self._estados_calle[orden.calle_id].estado = EstadoTrafico.NORMAL
+            
+            # Actualizar el estado en memoria para cada tramo afectado
+            for int_id, dic_calles in self._estados_interseccion.items():
+                if orden.calle_id in dic_calles:
+                    dic_calles[orden.calle_id].estado = EstadoTrafico.NORMAL
+                    
             self._aplicar_ciclo_normal(orden.calle_id, "ORDEN_EXPIRADA")
 
-    # Retorna el estado actual de una calle específica
-    def get_estado_calle(self, calle_id: str) -> Optional[EstadoCalle]:
-        return self._estados_calle.get(calle_id)
+    # Limpia estados de semáforos que llevan mucho tiempo sin recibir eventos
+    def _limpiar_estados_por_timeout(self) -> None:
+        # Obtiene la hora actual
+        ahora = datetime.now(timezone.utc)
+        # Recorre todos los tramos de todas las intersecciones
+        for int_id, dic_calles in self._estados_interseccion.items():
+            # Recorre todas las calles de la intersección
+            for calle_id, estado in dic_calles.items():
+                # Si el estado no es normal, verifica si ha pasado mucho tiempo
+                if estado.estado != EstadoTrafico.NORMAL:
+                    # Asegurarse de que ts_ultimo_evento también sea aware
+                    if estado.ts_ultimo_evento.tzinfo is None:
+                        estado.ts_ultimo_evento = estado.ts_ultimo_evento.replace(tzinfo=timezone.utc)
+                    
+                    transcurrido = (ahora - estado.ts_ultimo_evento).total_seconds()
+                    # Si ha pasado más de 5 minutos, se restaura a NORMAL
+                    if transcurrido > 300:
+                        print(f"[RulesEngine] Timeout en tramo {int_id}_{calle_id} (silencio de {transcurrido:.0f}s) -> Reset a NORMAL")
+                        estado.estado = EstadoTrafico.NORMAL
+                        # Aplica ciclo normal al tramo específico
+                        self._aplicar_ciclo_normal_micro(int_id, calle_id, "TIMEOUT_SENSOR")
 
-    # Retorna el estado actual de todas las calles
+    # Retorna el estado actual de una calle (primer tramo encontrado) o None
+    def get_estado_calle(self, calle_id: str) -> Optional[EstadoCalle]:
+        # Para compatibilidad con consultas legacy, retorna el primer estado encontrado para la calle
+        for dic_calles in self._estados_interseccion.values():
+            if calle_id in dic_calles:
+                return dic_calles[calle_id]
+        return None
+
+    # Retorna el estado actual de todos los tramos de manera plana
     def get_todos_estados(self) -> dict:
-        return {k: v.to_registro() for k, v in self._estados_calle.items()}
+        resultado = {}
+        for int_id, dic_calles in self._estados_interseccion.items():
+            for calle_id, estado in dic_calles.items():
+                tramo_id = f"{int_id}_{calle_id}"
+                resultado[tramo_id] = estado.to_registro()
+        return resultado
 
     # Retorna una intersección específica
     def get_interseccion(self, interseccion_id: str) -> Optional[Interseccion]:

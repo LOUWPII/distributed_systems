@@ -20,8 +20,9 @@ class SensorBase(ABC):
                     depositan sus eventos
                 intervalo (int): Segundos entre cada generación de datos del sensor
         """
-        self.sensor_id = config_sensor['sensor_id']
-        self.interseccion = config_sensor['interseccion']
+        self.config = config_sensor
+        self.interseccion = config_sensor.get('interseccion', '')
+        self.sensor_id = config_sensor.get('sensor_id', '')
         self.direccion = config_sensor['direccion']
         self.city_manager = city_manager
         self.cola_salida = cola

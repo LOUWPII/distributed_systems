@@ -1,13 +1,27 @@
 {
   "red": {
-    "broker_url": "tcp://192.168.1.10:5551",
-    "semaforos_url": "tcp://localhost:5552",
-    "bd_principal_url": "tcp://192.168.1.30:5560",
-    "bd_replica_url": "tcp://localhost:5570",
-    "query_handler_url": "tcp://*:5564",
-    "pc3_health_url": "tcp://192.168.1.30:5562"
+    "broker_sensor_url_SUB": "tcp://localhost:5550",
+    "sensor_broker_url_PUB": "tcp://*:5550",
+    "broker_analitica_url_PUB": "tcp://*:5551",
+    "analitica_broker_url_SUB": "tcp://localhost:5551",
+    "analitica_semaforos_url_PUSH": "tcp://localhost:5556",
+    "semaforos_analitica_url_PULL": "tcp:*:5556",
+    "analitica_bd_replica_url_PUSH": "tcp://localhost:5557",
+    "bd_replica_analitica_url_PULL": "tcp://*:5557",
+    "analitica_bd_principal_url_PUSH": "tcp://localhost:5558",
+    "bd_replica_consultas_url_REP": "tcp://*:5560",
+    "bd_principal_analitica_url_PULL": "tcp://*:5558",
+    "analitica_health_url_REQ": "tcp://localhost:5562",
+    "health_analitica_url_REP": "tcp://*:5562",
+    "analitica_monitoreo_url_REQ": "tcp://localhost:5563",
+    "monitoreo_analitica_url_REP": "tcp://*:5563",
+    "monitoreo_bd_principal_url_REQ": "tcp://localhost:5564",
+    "bd_principal_monitoreo_url_REP": "tcp://*:5564",
+    "analitica_sensores_semaf_url_PUB": "tcp://localhost:5565",
+    "sensores_analitica_semaf_url_SUB": "tcp://*:5565"
   },
-  "topicos": {
+  "modo_broker": "simple",
+  "sensores_topicos": {
     "camara": "camara",
     "espira": "espira_inductiva",
     "gps": "gps"
@@ -55,5 +69,16 @@
       "calle_fila": "fila_B",
       "calle_columna": "col_3"
     }
-  ]
+  ],
+  "ciudad": {
+    "filas": 4,
+    "columnas": 4,
+    "descripcion": "Cuadrícula del caso de prueba"
+  },
+  "parametros_simulacion": {
+    "intervalo_evolucion_s": 5,
+    "intervalo_sensores_s": 10,
+    "volatilidad_ruido": 0.15,
+    "probabilidad_shock": 0.05
+  }
 }

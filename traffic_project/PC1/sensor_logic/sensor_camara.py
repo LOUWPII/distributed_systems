@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from distributed_systems.traffic_project.PC1.sensor_logic.sensor_base import SensorBase
+from sensor_logic.sensor_base import SensorBase
 
 
 class SensorCamara(SensorBase):
@@ -14,13 +14,14 @@ class SensorCamara(SensorBase):
         Cola: crece con el nivel.
         Velocidad: caesegún Greenshields.
         """
-        cola = int(nivel * self.Q_COLA_MAX)
-        velocidad = round((1 - nivel) * self.VF, 1)
+        cola = 25
+        velocidad = 4.0
 
         return {
             "sensor_id": self.sensor_id,
             "tipo_sensor": "camara",
             "interseccion": self.interseccion,
+            "calle_id": self.config.get('calle_id', ''),
             "volumen": cola,  # Número de vehículos en espera
             "velocidad_promedio": velocidad,
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"

@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from distributed_systems.traffic_project.PC1.sensor_logic.sensor_base import SensorBase
-
+from sensor_logic.sensor_base import SensorBase
 
 class SensorEspira(SensorBase):
     # Capacidad máxima de la intersección en 30 segundos
@@ -24,6 +23,7 @@ class SensorEspira(SensorBase):
             "sensor_id": self.sensor_id,
             "tipo_sensor": "espira_inductiva",
             "interseccion": self.interseccion,
+            "calle_id": self.config.get('calle_id', ''), 
             "vehiculos_contados": vehiculos,
             "intervalo_segundos": 30,
             "timestamp_inicio": inicio.strftime("%Y-%m-%dT%H:%M:%S") + "Z",

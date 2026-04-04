@@ -50,14 +50,15 @@ class Config:
             data = json.load(f)
 
         red = data["red"]
-        self.broker_url = red["broker_url"]
-        self.semaforos_url = red["semaforos_url"]
-        self.bd_replica_url = red["bd_replica_url"]
-        self.bd_principal_url = red["bd_principal_url"]
-        self.query_handler_url = red["query_handler_url"]
-        self.pc3_health_url = red["pc3_health_url"]
+        # Mapeo a las variables que usa la Analítica (PC2)
+        self.broker_url = red["analitica_broker_url_SUB"]
+        self.semaforos_url = red["analitica_semaforos_url_PUSH"]
+        self.bd_replica_url = red["analitica_bd_replica_url_PUSH"]
+        self.bd_principal_url = red["analitica_bd_principal_url_PUSH"]
+        self.query_handler_url = red["monitoreo_analitica_url_REP"]
+        self.pc3_health_url = red["analitica_health_url_REQ"]
 
-        topicos = data["topicos"]
+        topicos = data.get("sensores_topicos", data.get("topicos", {}))
         self.topico_camara = topicos["camara"]
         self.topico_espira = topicos["espira"]
         self.topico_gps = topicos["gps"]

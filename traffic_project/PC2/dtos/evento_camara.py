@@ -28,7 +28,7 @@ class EventoCamara(EventoSensor):
         return cls(
             sensor_id = data["sensor_id"],
             interseccion_id = data["interseccion"],
-            calle_id = data.get("calle_id", ""),
+            calle_id = data.get("calle_id") or data.get("calle", ""),
             timestamp = data["timestamp"],
             volumen = int(data["volumen"]),
             velocidad_promedio = float(data["velocidad_promedio"]),

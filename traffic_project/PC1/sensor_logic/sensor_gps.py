@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from distributed_systems.traffic_project.PC1.sensor_logic.sensor_base import SensorBase
+from sensor_logic.sensor_base import SensorBase
 
 
 class SensorGPS(SensorBase):
@@ -16,6 +16,8 @@ class SensorGPS(SensorBase):
         return {
             "sensor_id": self.sensor_id,
             "tipo_sensor": "gps",
+            "interseccion": self.interseccion,
+            "calle_id": self.config.get('calle_id', ''), 
             "nivel_congestion": congestion,
             "velocidad_promedio": velocidad,
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"

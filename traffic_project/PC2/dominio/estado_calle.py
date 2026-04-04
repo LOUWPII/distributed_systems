@@ -25,15 +25,15 @@ class EstadoCalle:
     """
 
     def __init__(self, calle_id: str, tipo: TipoCalle):
-        self.calle_id            = calle_id
-        self.tipo                = tipo
-        self.nivel               = 0.0      # 0.0 (vacía) a 1.0 (bloqueada)
-        self.velocidad_promedio  = 50.0     # km/h — arranca en velocidad libre
-        self.ultima_cola         = 0        # número de vehículos en cola
-        self.ultimo_conteo       = 0        # vehículos contados por espira
+        self.calle_id = calle_id
+        self.tipo = tipo
+        self.nivel = 0.0                    # 0.0 (vacía) a 1.0 (bloqueada)
+        self.velocidad_promedio = 50.0      # km/h — arranca en velocidad libre
+        self.ultima_cola = 0                # número de vehículos en cola
+        self.ultimo_conteo = 0              # vehículos contados por espira
         self.nivel_congestion_gps = "BAJA"  # ALTA / NORMAL / BAJA
-        self.estado              = EstadoTrafico.NORMAL
-        self.ts_ultimo_evento    = datetime.now()
+        self.estado = EstadoTrafico.NORMAL
+        self.ts_ultimo_evento = datetime.now()
 
     def actualizar(self, evento: EventoSensor) -> None:
         """
@@ -69,8 +69,8 @@ class EstadoCalle:
         # Evaluar estado según las reglas
         if (
             self.ultima_cola > COLA_CONGESTION
-            and self.velocidad_promedio < VEL_CONGESTION
-            and self.nivel_congestion_gps == "ALTA"
+            or self.velocidad_promedio < VEL_CONGESTION
+            or self.nivel_congestion_gps == "ALTA"
         ):
             return EstadoTrafico.CONGESTION
 
