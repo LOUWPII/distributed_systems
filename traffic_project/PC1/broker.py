@@ -2,8 +2,6 @@ import zmq
 import json
 import threading
 from datetime import datetime, timezone
-
-
 class BrokerZMQ:
     def __init__(self, config):
         """Inicializa configuración y contadores ."""
@@ -11,144 +9,112 @@ class BrokerZMQ:
         self.modo = config.get('modo_broker', 'simple')  # 'simple' o 'multihilos'
         self.topicos = list(config['sensores_topicos'].values())
         self.contadores = {t: 0 for t in self.topicos}
-
-        # En modo simple, los sockets son globales al objeto [7]
+        # En el diseño actual usamos el Modo Simple como base robusta
         if self.modo == 'simple':
             self._configurar_sockets()
-
     def _configurar_sockets(self):
         """Configuración para el modo de un solo hilo."""
         self.context = zmq.Context()
         # Frontend: Recibe de sensores (SUB)
         self.sub_socket = self.context.socket(zmq.SUB)
-        #self.sub_socket.bind(f"tcp://*:{self.config['broker']['sub_port']}")
         self.sub_socket.bind(self.config['red']['sensor_broker_url_PUB'])
         for t in self.topicos:
             self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, t)
-
         # Backend: Publica hacia PC2 (PUB)
         self.pub_socket = self.context.socket(zmq.PUB)
         self.pub_socket.bind(self.config['red']['broker_analitica_url_PUB'])
-
     def _validar(self, topico, evento):
-        """Validación del JSON."""
-        if topico not in self.topicos: return False
-        if 'sensor_id' not in evento: return False
-        # Espira y cámara requieren intersección obligatoriamente [8]
-        if topico in ('sensor.espira_inductiva', 'sensor.camara'):
-            if 'interseccion' not in evento: return False
+        """
+        Validación del JSON (espera un DICCIONARIO).
+        """
+        if topico not in self.topicos: 
+            return False
+        if 'sensor_id' not in evento: 
+            return False
+        
+        # Validación estructural mínima
+        if topico in ('espira_inductiva', 'camara'):
+            if 'interseccion' not in evento: 
+                return False
         return True
-
     def _validar_sentido_fisico(self, topico, evento):
-        """Verifica coherencia según Greenshields ."""
+        """Verifica coherencia básica según Greenshields."""
         try:
-            if topico == 'sensor.camara':
-                nivel_est = evento.get('volumen', 0) / 20.0
-                v_esperada = 50 * (1 - nivel_est)
-                if abs(evento.get('velocidad_promedio', 0) - v_esperada) > 8.0: return False
-            elif topico == 'sensor.gps':
+            if topico == 'camara':
+                # El volumen no puede ser negativo
+                if evento.get('volumen', 0) < 0: return False
+                # La velocidad no puede ser mayor que la de flujo libre de forma exagerada
+                if evento.get('velocidad_promedio', 0) > 60: return False
+            elif topico == 'gps':
                 v = evento.get('velocidad_promedio', 0)
                 cat = evento.get('nivel_congestion', '')
-                if cat == 'ALTA' and v >= 10: return False
-                if cat == 'BAJA' and v <= 40: return False
+                if cat == 'ALTA' and v >= 20: return False
+                if cat == 'BAJA' and v <= 35: return False
             return True
         except:
             return False
-
     def _enriquecer(self, evento):
-        """Agrega timestamp para medir latencia sensor-broker [2, 9]."""
+        """Agrega timestamp para medir latencia sensor-broker."""
         evento['broker_timestamp'] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
         return evento
-
-    def _loguear(self, topico, evento):
-        """Imprime estado del tráfico con contadores [2, 10]."""
+    def _loguear_evento(self, topico, evento):
+        """Imprime un log legible según el tipo de sensor."""
         self.contadores[topico] += 1
-        total = self.contadores[topico]
-        sid = evento['sensor_id']
-        print(f"[Broker] {topico:<30} | {sid:<12} | total: {total}")
-
-    def _procesar_mensaje(self, msg, pub_socket):
-        """Flujo de 6 pasos definido en el diseño"""
-        # PASO 1: Separar tópico y payload
-        topico, _, payload = msg.partition(' ')
-
-        # PASO 2: Validar JSON
-        try:
-            evento = json.loads(payload)
-        except json.JSONDecodeError:
-            print(f"[Broker] ERROR: JSON inválido en {topico}")
-            return
-
-        # PASO 3: Validar estructura y sentido físico [8]
-        if self._validar(topico, evento) and self._validar_sentido_fisico(topico, evento):
-            # PASO 4: Enriquecer con timestamp
-            evento = self._enriquecer(evento)
-            # PASO 5: Reconstruir y reenviar a PC2
-            msg_out = f"{topico} {json.dumps(evento)}"
-            pub_socket.send_string(msg_out)
-            # PASO 6: Loguear
-            self._loguear(topico, evento)
+        sid = evento.get('sensor_id', '???')
+        
+        # Fusión de campos según tipo de sensor para el log centralizado
+        if topico == 'espira_inductiva':
+            info = f"Flujo: {evento.get('vehiculos_contados', 0):<3} veh/int"
+        elif topico == 'camara':
+            info = f"Cola: {evento.get('volumen', 0):<3} veh | Vel: {evento.get('velocidad_promedio', 0):.1f} km/h"
+        elif topico == 'gps':
+            info = f"Est: {evento.get('nivel_congestion', '???'):<8} | Vel: {evento.get('velocidad_promedio', 0):.1f} km/h"
         else:
-            print(f"[Broker] Mensaje de {evento.get('sensor_id', '???')} DESCARTADO.")
-
-    def _loop_simple(self):
-        """Procesamiento secuencial."""
-        print("[Broker] Iniciando Modo Simple (1 hilo)...")
-        while True:
-            msg = self.sub_socket.recv_string()
-            self._procesar_mensaje(msg, self.pub_socket)
-
-    def _worker_topico(self, topico):
-        """Hilo trabajador: Respeta 'un socket por hilo'."""
-        ctx = zmq.Context.instance()
-        # Cada hilo crea sus propios sockets locales
-        sub = ctx.socket(zmq.SUB)
-        sub.connect(f"tcp://localhost:{self.config['broker']['sub_port']}")
-        sub.setsockopt_string(zmq.SUBSCRIBE, topico)
-
-        pub = ctx.socket(zmq.PUB)
-        pub.connect(f"tcp://{self.config['red']['pc2_ip']}:{self.config['broker']['pub_port']}")
-
-        print(f"[Broker-Worker] Hilo para {topico} listo.")
-        while True:
-            msg = sub.recv_string()
-            self._procesar_mensaje(msg, pub)
-
-    def _loop_multihilos(self):
-        """Procesamiento paralelo para experimentos de la Tabla 1."""
-        print("[Broker] Iniciando Modo Multihilos (1 hilo por tópico)...")
-        for t in self.topicos:
-            thread = threading.Thread(target=self._worker_topico, args=(t,), daemon=True)
-            thread.start()
-        threading.Event().wait()  # Bloquea el hilo principal
-
+            info = "Datos recibidos"
+        print(f"[Broker] {topico:<18} | ID: {sid:<8} | {info}")
     def iniciar(self):
         # Configurar timeout para poder capturar Ctrl+C en Windows
         self.sub_socket.setsockopt(zmq.RCVTIMEO, 1000)
         
-        print(f"[Broker] Iniciando Modo Simple (1 hilo)... Ctrl+C para salir.")
+        print(f"[Broker] Iniciando Modo Simple (1 hilo)...")
+        print(f"[Broker] Escuchando sensores en: {self.config['red']['sensor_broker_url_PUB']}")
+        print(f"[Broker] Tópicos suscritos: {self.topicos}")
+        print("-" * 75)
         
         try:
             while True:
                 try:
-                    # Recibir el mensaje multiparte: [Tópico, Cuerpo JSON]
+                    # 1. Recibir el mensaje multiparte: [Tópico, Cuerpo JSON]
                     partes = self.sub_socket.recv_multipart()
                     if len(partes) < 2:
                         continue
                     
                     topico = partes[0].decode('utf-8')
-                    cuerpo = partes[1].decode('utf-8')
-
-                    # Solo validamos el cuerpo JSON REAL (la parte 2)
-                    if self._validar(topico, cuerpo):
-                        # Reenviar el mensaje original TAL CUAL a PC2
-                        self.pub_socket.send_multipart(partes)
-                        print(f"[Broker] >> Reenviado evento: {topico}")
+                    cuerpo_raw = partes[1].decode('utf-8')
+                    # 2. Parsear el JSON una sola vez
+                    try:
+                        evento = json.loads(cuerpo_raw)
+                    except json.JSONDecodeError:
+                        print(f"[Broker] ⚠ Error: JSON inválido en {topico}")
+                        continue
+                    # 3. Validar y Enriquecer
+                    if self._validar(topico, evento) and self._validar_sentido_fisico(topico, evento):
+                        evento_enriquecido = self._enriquecer(evento)
+                        
+                        # PASO 4: Reconstruir el mensaje y reenviar a PC2 (Analítica)
+                        payload_final = json.dumps(evento_enriquecido)
+                        self.pub_socket.send_multipart([
+                            topico.encode('utf-8'),
+                            payload_final.encode('utf-8')
+                        ])
+                        
+                        # PASO 5: Loguear localmente lo que está pasando
+                        self._loguear_evento(topico, evento_enriquecido)
                     else:
-                        print(f"[Broker] ⚠ Error: Cuerpo de mensaje inválido en {topico}")
+                        print(f"[Broker] ⚠ Mensaje de {evento.get('sensor_id', '???')} DESCARTADO por validación.")
                         
                 except zmq.Again:
-                    # No han llegado mensajes en 1s, el bucle sigue permitiendo Ctrl+C
+                    # Pausa de 1s para permitir interrupción (Ctrl+C)
                     continue
                     
         except KeyboardInterrupt:
@@ -157,9 +123,11 @@ class BrokerZMQ:
             self.sub_socket.close()
             self.pub_socket.close()
             self.context.term()
-
 if __name__ == "__main__":
-    with open('config.json', 'r') as f:
-        config = json.load(f)
-    broker = BrokerZMQ(config)
-    broker.iniciar()
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+        broker = BrokerZMQ(config)
+        broker.iniciar()
+    except FileNotFoundError:
+        print("[Error] No se encontró el archivo 'config.json' en el directorio actual.")

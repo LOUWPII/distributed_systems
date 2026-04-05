@@ -66,8 +66,8 @@ class TrafficState:
             else:
                 # Comportamiento normal
                 delta = self._random_walk()
-                delta += self._shock()
                 delta += self._recuperacion()
+                delta += self._shock()
 
             # Aplicar clip para mantener nivel en el rango
             self.nivel = max(0.0, min(1.0, self.nivel + delta))
@@ -86,8 +86,8 @@ class TrafficState:
         if not self.en_recuperacion and random.random() < self.prob_shock:
             self.nivel_pre_shock = self.nivel
             self.en_recuperacion = True
-            #ESTO DEBE REVISARSE POR EL TEMA DE LA OLA VERDE Y LA CONGESTIÓN FORZADA
-            return random.choice([0.35, -0.35])
+            #el nivel se aumenta 0.35, el shock sería de 0.35
+            return 0.35
         return 0
 
     def _recuperacion(self):

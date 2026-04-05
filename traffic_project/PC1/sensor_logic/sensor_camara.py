@@ -14,8 +14,8 @@ class SensorCamara(SensorBase):
         Cola: crece con el nivel.
         Velocidad: caesegún Greenshields.
         """
-        cola = 25
-        velocidad = 4.0
+        cola = int(nivel * self.Q_COLA_MAX)
+        velocidad = round((1 - nivel) * self.VF, 1)
 
         return {
             "sensor_id": self.sensor_id,

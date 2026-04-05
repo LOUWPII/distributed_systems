@@ -39,8 +39,10 @@ class CityManager:
 
         for s in self.config['sensores']:
             # Extraer identificador de calle (ej: INT_F3 + columna = col_3)
-            num_calle = s['interseccion'][-1]
-            id_calle = f"{s['direccion']}_{num_calle}"
+            id_calle = s.get('calle_id')
+            if not id_calle:
+                num_calle = s['interseccion'][-1]
+                id_calle = f"{s['direccion']}_{num_calle}"
 
             if id_calle not in self.traffic_states:
                 # Nivel inicial aleatorio para la calle (entre 0.1 y 0.6)

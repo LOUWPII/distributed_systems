@@ -30,7 +30,7 @@ class SensorBase(ABC):
         self.contador_eventos = 0
 
         # Construye el nombre de la calle (ej: fila_C)
-        self.calle = f"{self.direccion}_{self.interseccion[-2]}"
+        self.calle = self.config.get('calle_id', f"{self.direccion}_{self.interseccion[-2 if self.direccion == 'fila' else -1]}")
 
     def _aplicar_ruido(self, nivel_base):
         """
