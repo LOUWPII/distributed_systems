@@ -100,7 +100,7 @@ class RulesEngine(threading.Thread):
                 semaforo_columna = semaforo_col,
             )
 
-        print(f"[RulesEngine] Dics de {len(self._estados_interseccion)} intersecciones cargados")
+        print(f"[RulesEngine] Estaados de {len(self._estados_interseccion)} intersecciones cargados")
         print(f"[RulesEngine] {len(self._intersecciones)} intersecciones físicas cargadas")
 
     # Ciclo principal del hilo
@@ -132,7 +132,7 @@ class RulesEngine(threading.Thread):
 
         # 2. Verificar si la calle en esta intersección existe en el mapa
         if int_id not in self._estados_interseccion or calle_id not in self._estados_interseccion[int_id]:
-            print(f"[RulesEngine] ⚠ Evento de tramo desconocido: INT={int_id} CALLE={calle_id}")
+            print(f"[RulesEngine] Evento de tramo desconocido: INT={int_id} CALLE={calle_id}")
             return
 
         estado = self._estados_interseccion[int_id][calle_id]
@@ -143,14 +143,23 @@ class RulesEngine(threading.Thread):
         # 4. Persistir el evento en las BDs
         self._gestor.persistir_evento(evento)
 
+        # Configurar mensaje de impresión dinámico según el tipo de evento
+        if type(evento).__name__ == "EventoCamara":
+            info_sensor = f"cola={evento.volumen} vel={evento.velocidad_promedio:.1f}km/h"
+        elif type(evento).__name__ == "EventoEspira":
+            info_sensor = f"vehículos={evento.vehiculos_contados} intv={evento.intervalo_s}s"
+        elif type(evento).__name__ == "EventoGPS":
+            info_sensor = f"congestión={evento.nivel_congestion} vel={evento.velocidad_promedio:.1f}km/h"
+        else:
+            info_sensor = "datos_desconocidos"
+
         print(
-            f"[RulesEngine] Evento recibido: {evento} | "
-            f"INT={int_id} cola={estado.ultima_cola} vel={estado.velocidad_promedio:.1f}km/h"
+            f"[RulesEngine] Evento recibido: {evento.sensor_id} ({type(evento).__name__}) | "
+            f"INT={int_id} | {info_sensor}"
         )
-        
+
         # 5. Evaluar si el estado del tráfico cambia (comportamiento micro)
         self.evaluar_micro(int_id, estado)
-
 
     # Cambiar orden 2,4,1,3,5
 

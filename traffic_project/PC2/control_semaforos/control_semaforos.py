@@ -81,7 +81,7 @@ class ControlSemaforos:
 
             print(f"[ACCIÓN SEMÁFORO]: {semaforo_id}")
             if nuevo_estado == "VERDE":
-                print(f"🟢 CAMBIO A VERDE (Por {duracion}s)")
+                print(f"🟢 CAMBIO A VERDE (Durante {duracion}s)")
             elif nuevo_estado == "ROJO":
                 print(f"🔴 CAMBIO A ROJO")
             print(f"Motivo: {motivo}")

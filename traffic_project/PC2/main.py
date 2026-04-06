@@ -28,7 +28,7 @@ from application.query_handler import QueryHandler
 def main():
     print("=" * 55)
     print("  Servicio de Analítica — PC2")
-    print("  Sistema de Gestión de Tráfico Urbano")
+    print("  Sistema de Gestión de Tráfico")
     print("=" * 55)
 
     # 1. Cargar configuración

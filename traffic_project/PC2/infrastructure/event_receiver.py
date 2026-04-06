@@ -46,8 +46,8 @@ class EventReceiver(threading.Thread):
 
         # Conectarse al broker
         self._socket.connect(self._config.broker_url)
-        print(f"[EventReceiver] Conectado a broker {self._config.broker_url}")
-        print(f"[EventReceiver] Suscrito a tópicos: {topicos}")
+        print(f"[EventReceiver] Conectado a Broker {self._config.broker_url}")
+        print(f"[EventReceiver] Suscrito a Tópicos: {topicos}")
 
         # Ciclo para recibir eventos mientras el hilo esté activo
         while self._activo:

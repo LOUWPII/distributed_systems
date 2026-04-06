@@ -97,8 +97,8 @@ class DatabaseService:
         t_consultas.start()
 
         print("[DB] Base de Datos Principal (PC3) operando con hilos independientes.")
-        print(f"   - URL PULL (datos): {PULL_URL}")
-        print(f"   - URLs REP (health y monitoreo): {REP_HEALTH_URL} | {REP_MONITOREO_URL}")
+        print(f"   - Ingesta datos (PULL): {PULL_URL}")
+        print(f"   - Healh y monitoreo (REP): {REP_HEALTH_URL} | {REP_MONITOREO_URL}")
 
         try:
             t_ingesta.join()

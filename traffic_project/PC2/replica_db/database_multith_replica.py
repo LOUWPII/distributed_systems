@@ -43,7 +43,7 @@ class DatabaseReplicaService:
         # Crea un socket PULL para recibir datos de Analítica
         self._pull_socket = self.context.socket(zmq.PULL)
         self._pull_socket.bind(PULL_URL)
-        print(f"[Réplica] Hilo PULL activo en {PULL_URL} (modo failover)")
+        print(f"[Réplica] Hilo PULL activo en {PULL_URL}")
 
         # Mientras el hilo esté activo, recibe datos de Analítica
         while self._activo:
@@ -62,7 +62,7 @@ class DatabaseReplicaService:
     def _loop_consultas(self):
         self._rep_socket = self.context.socket(zmq.REP)
         self._rep_socket.bind(REP_URL)
-        print(f"[Réplica-Consultas] Hilo REP activo en {REP_URL} (modo failover)")
+        print(f"[Réplica-Consultas] Hilo REP activo en {REP_URL}")
 
         while self._activo:
             try:
@@ -81,9 +81,9 @@ class DatabaseReplicaService:
         t_ingesta.start()
         t_consultas.start()
 
-        print("[Réplica] Base de Datos Réplica (PC2) operando en modo failover absoluto.")
-        print(f"   - URL PULL (ingesta failover): {PULL_URL}")
-        print(f"   - URL REP (consultas failover): {REP_URL}")
+        print("[Réplica] Base de Datos Réplica (PC2) operando con Failover")
+        print(f"   - Ingesta failover (PULL): {PULL_URL}")
+        # print(f"   - Consultas failover (REP): {REP_URL}")
 
         try:
             while True:
