@@ -29,28 +29,42 @@
     "timeout_s": 2
   },
   "sensores": [
-    {
-      "sensor_id": "CAM-C5",
-      "tipo": "camara",
-      "interseccion": "INT_C5",
-      "calle_id": "fila_C",
-      "direccion": "fila"
-    },
-    {
-      "sensor_id": "ESP-C2",
-      "tipo": "espira_inductiva",
-      "interseccion": "INT_C2",
-      "calle_id": "fila_C",
-      "direccion": "fila"
-    },
-    {
-      "sensor_id": "GPS-B3",
-      "tipo": "gps",
-      "interseccion": "INT_B3",
-      "calle_id": "col_3",
-      "direccion": "columna"
-    }
-  ],
+      {
+        "sensor_id": "CAM-C5",
+        "tipo": "camara",
+        "interseccion": "INT_C5",
+        "calle_id": "fila_C",
+        "direccion": "fila"
+      },
+      {
+        "sensor_id": "CAM-B1",
+        "tipo": "camara",
+        "interseccion": "INT_B1",
+        "calle_id": "fila_B",
+        "direccion": "fila"
+      },
+      {
+        "sensor_id": "ESP-C2",
+        "tipo": "espira_inductiva",
+        "interseccion": "INT_C2",
+        "calle_id": "fila_C",
+        "direccion": "fila"
+      },
+      {
+        "sensor_id": "ESP-B5",
+        "tipo": "espira_inductiva",
+        "interseccion": "INT_B5",
+        "calle_id": "columna_B",
+        "direccion": "columna"
+      },
+      {
+        "sensor_id": "GPS-B3",
+        "tipo": "gps",
+        "interseccion": "INT_B3",
+        "calle_id": "col_3",
+        "direccion": "columna"
+      }
+    ],
   "intersecciones": [
     {
       "interseccion_id": "INT_C2",
@@ -77,6 +91,6 @@
     "intervalo_evolucion_s": 5,
     "intervalo_sensores_s": 10,
     "volatilidad_ruido": 0.15,
-    "probabilidad_shock": 0.05
+    "probabilidad_shock": 0.4
   }
 }
