@@ -57,6 +57,9 @@ class RulesEngine(threading.Thread):
         self._intersecciones: dict[str, Interseccion] = {}
         self._ordenes_activas: list[OrdenDirecta] = []
 
+        # Hilo secundario para el ciclo automático
+        self._thread_ciclo = threading.Thread(target=self._loop_ciclo_automatico, daemon=True, name="CicloAutomatico")
+
         self._inicializar_desde_config()
 
     # Construye el estado inicial del sistema a partir del config.json
@@ -99,12 +102,18 @@ class RulesEngine(threading.Thread):
                 semaforo_fila = semaforo_fila,
                 semaforo_columna = semaforo_col,
             )
+            
+            # Enviar los estados iniciales de los dos semáforos por cada intersección 
+            # para que figuren en la BD y consola desde el arranque
+            self._gestor.enviar_cmd(semaforo_fila.to_comando("INICIO_SISTEMA"))
+            self._gestor.enviar_cmd(semaforo_col.to_comando("INICIO_SISTEMA"))
 
-        print(f"[RulesEngine] Estaados de {len(self._estados_interseccion)} intersecciones cargados")
+        print(f"[RulesEngine] Estados de {len(self._estados_interseccion)} intersecciones cargados")
         print(f"[RulesEngine] {len(self._intersecciones)} intersecciones físicas cargadas")
 
     # Ciclo principal del hilo
     def run(self) -> None:
+        self._thread_ciclo.start()
         print("[RulesEngine] Iniciado — esperando eventos")
         while self._activo:
             try:
@@ -272,6 +281,9 @@ class RulesEngine(threading.Thread):
             interseccion.set_verde_columna(DURACION_NORMAL_S)
 
         self._gestor.enviar_cmd(semaforo.to_comando(motivo))
+        semaforo_cruzado = interseccion.get_semaforo_cruzado(calle_id)
+        if semaforo_cruzado:
+            self._gestor.enviar_cmd(semaforo_cruzado.to_comando(motivo))
 
     # Aplica una ola verde a TODA una calle (comportamiento Macro para órdenes manuales)
     def aplicar_ola_verde(
@@ -327,6 +339,9 @@ class RulesEngine(threading.Thread):
                 interseccion.set_verde_columna(DURACION_NORMAL_S)
 
             self._gestor.enviar_cmd(semaforo.to_comando(motivo))
+            semaforo_cruzado = interseccion.get_semaforo_cruzado(calle_id)
+            if semaforo_cruzado:
+                self._gestor.enviar_cmd(semaforo_cruzado.to_comando(motivo))
 
     # Gestión de órdenes directas
     def registrar_orden(self, orden: OrdenDirecta) -> None:
@@ -405,3 +420,50 @@ class RulesEngine(threading.Thread):
     # Retorna una intersección específica
     def get_interseccion(self, interseccion_id: str) -> Optional[Interseccion]:
         return self._intersecciones.get(interseccion_id)
+
+    # Ciclo de fondo que simula el cambio normal de los semáforos
+    def _loop_ciclo_automatico(self):
+        import time
+        from enums import EstadoSemaforo, EstadoTrafico
+        print("[RulesEngine] Hilo de Ciclo Automático iniciado")
+        
+        while self._activo:
+            time.sleep(1) # Revisión recurrente cada segundo
+            
+            for int_id, interseccion in self._intersecciones.items():
+                
+                # Check si hay una congestión en esta intersección
+                estados_calles_en_int = self._estados_interseccion.get(int_id, {})
+                en_estado_normal = True
+                for estado_calle in estados_calles_en_int.values():
+                    if estado_calle.estado != EstadoTrafico.NORMAL:
+                        en_estado_normal = False
+                        break
+                
+                # Check si hay orden directa manual afectándola
+                if en_estado_normal:
+                    with self._lock_ordenes:
+                        if any(o.esta_activa() for o in self._ordenes_activas 
+                                if o.calle_id in (interseccion.semaforo_fila.calle_id, interseccion.semaforo_columna.calle_id)):
+                            en_estado_normal = False
+                
+                if en_estado_normal:
+                    # Alternar de forma lógica porque está en modo normal
+                    sem_fila = interseccion.semaforo_fila
+                    sem_col = interseccion.semaforo_columna
+                    
+                    # Ver el tiempo restante de los semáforos actuales
+                    ts_fila = sem_fila.tiempo_restante_s()
+                    ts_col = sem_col.tiempo_restante_s()
+                    
+                    if ts_fila == 0 and sem_fila.estado == EstadoSemaforo.VERDE:
+                        # Fila expiró su verde, dar verde a Columna
+                        interseccion.set_verde_columna(DURACION_NORMAL_S)
+                        self._gestor.enviar_cmd(sem_col.to_comando("CAMBIO_AUTOMATICO_NORMAL"))
+                        self._gestor.enviar_cmd(sem_fila.to_comando("CAMBIO_AUTOMATICO_NORMAL"))
+                    
+                    elif ts_col == 0 and sem_col.estado == EstadoSemaforo.VERDE:
+                        # Columna expiró su verde, dar verde a Fila 
+                        interseccion.set_verde_fila(DURACION_NORMAL_S)
+                        self._gestor.enviar_cmd(sem_fila.to_comando("CAMBIO_AUTOMATICO_NORMAL"))
+                        self._gestor.enviar_cmd(sem_col.to_comando("CAMBIO_AUTOMATICO_NORMAL"))
