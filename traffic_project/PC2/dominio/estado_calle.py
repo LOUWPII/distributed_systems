@@ -71,6 +71,7 @@ class EstadoCalle:
             self.ultima_cola > COLA_CONGESTION
             or self.velocidad_promedio < VEL_CONGESTION
             or self.nivel_congestion_gps == "ALTA"
+            or (self.ultimo_conteo < 6 and self.nivel_congestion_gps == "ALTA")
         ):
             return EstadoTrafico.CONGESTION
 
@@ -78,6 +79,7 @@ class EstadoCalle:
             self.ultima_cola < COLA_NORMAL
             and self.velocidad_promedio > VEL_NORMAL
             and self.nivel_congestion_gps != "ALTA"
+            or ((self.ultimo_conteo < 6 and self.nivel_congestion_gps == "NORMAL") or (self.ultimo_conteo < 6 and self.nivel_congestion_gps == "BAJA"))
         ):
             return EstadoTrafico.NORMAL
 
