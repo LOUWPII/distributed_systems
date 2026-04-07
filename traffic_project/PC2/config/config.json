@@ -30,38 +30,45 @@
   },
   "sensores": [
       {
-        "sensor_id": "CAM-C5",
+        "sensor_id": "CAM-C2",
         "tipo": "camara",
-        "interseccion": "INT_C5",
+        "interseccion": "INT_C2",
         "calle_id": "fila_C",
-        "direccion": "fila"
-      },
-      {
-        "sensor_id": "CAM-B1",
-        "tipo": "camara",
-        "interseccion": "INT_B1",
-        "calle_id": "fila_B",
         "direccion": "fila"
       },
       {
         "sensor_id": "ESP-C2",
         "tipo": "espira_inductiva",
         "interseccion": "INT_C2",
-        "calle_id": "fila_C",
-        "direccion": "fila"
-      },
-      {
-        "sensor_id": "ESP-B5",
-        "tipo": "espira_inductiva",
-        "interseccion": "INT_B5",
-        "calle_id": "columna_B",
+        "calle_id": "col_2",
         "direccion": "columna"
       },
       {
         "sensor_id": "GPS-B3",
         "tipo": "gps",
         "interseccion": "INT_B3",
+        "calle_id": "fila_B",
+        "direccion": "fila"
+      },
+      {
+        "sensor_id": "CAM-B3",
+        "tipo": "camara",
+        "interseccion": "INT_B3",
         "calle_id": "col_3",
+        "direccion": "columna"
+      },
+      {
+        "sensor_id": "ESP-C4",
+        "tipo": "espira_inductiva",
+        "interseccion": "INT_C4",
+        "calle_id": "fila_C",
+        "direccion": "fila"
+      },
+      {
+        "sensor_id": "CAM-C4",
+        "tipo": "camara",
+        "interseccion": "INT_C4",
+        "calle_id": "col_4",
         "direccion": "columna"
       }
     ],
@@ -72,14 +79,14 @@
       "calle_columna": "col_2"
     },
     {
-      "interseccion_id": "INT_C5",
-      "calle_fila": "fila_C",
-      "calle_columna": "col_5"
-    },
-    {
       "interseccion_id": "INT_B3",
       "calle_fila": "fila_B",
       "calle_columna": "col_3"
+    },
+    {
+      "interseccion_id": "INT_C4",
+      "calle_fila": "fila_C",
+      "calle_columna": "col_4"
     }
   ],
   "ciudad": {
@@ -91,6 +98,6 @@
     "intervalo_evolucion_s": 5,
     "intervalo_sensores_s": 10,
     "volatilidad_ruido": 0.15,
-    "probabilidad_shock": 0.4
+    "probabilidad_shock": 0.0
   }
 }
