@@ -51,7 +51,7 @@ def main():
     query_handler = QueryHandler(config, rules_engine)
 
     # 4. Arrancar todos los hilos
-    hilos = [health_monitor, rules_engine, event_receiver, query_handler]
+    hilos = [health_monitor, gestor_salida, rules_engine, event_receiver, query_handler]
     for hilo in hilos:
         hilo.start()
         print(f"[Main] Hilo iniciado: {hilo.name}")
@@ -60,10 +60,9 @@ def main():
 
     def apagar(sig, frame):
         print("\n[Main] Señal de interrupción recibida — apagando...")
-        for hilo in [event_receiver, query_handler, rules_engine, health_monitor]:
+        for hilo in [event_receiver, query_handler, rules_engine, health_monitor, gestor_salida]:
             if hasattr(hilo, "detener"):
                 hilo.detener()
-        gestor_salida.cerrar()
         print("[Main] Servicio detenido.")
         sys.exit(0)
 
