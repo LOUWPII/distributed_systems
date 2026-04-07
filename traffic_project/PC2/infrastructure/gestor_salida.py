@@ -1,5 +1,6 @@
 import json
-
+import queue
+import threading
 import zmq
 
 from config import Config
@@ -7,17 +8,25 @@ from dtos import ComandoSemaforo, EventoSensor
 from dominio import OrdenDirecta
 from infrastructure.health_monitor import HealthMonitor
 
-
 # Gestiona toda la comunicación saliente del Servicio de Analítica.
-# No corre en su propio hilo porque PUSH es asíncrono en ZMQ
+# Delega sus responsabilidades a tres hilos Workers dedicados (Semáforos, BD Réplica, BD Principal)
+# de forma totalmente paralela y asíncrona para que un bloqueo en uno de los destinos
+# no interrumpa a los demás envíos ni al RulesEngine principal.
 class GestorSalida:
 
     def __init__(self, config: Config, health_monitor: HealthMonitor):
         self._config = config
         self._health = health_monitor
         self._contexto_zmq = zmq.Context.instance()
+        self._activo = True
+        self.name = "GestorSalida" # Utilizado en el print de main.py
+        
+        # 3 Colas independientes en memoria para los distintos receptores
+        self._queue_semaforos = queue.Queue(maxsize=0)
+        self._queue_replica = queue.Queue(maxsize=0)
+        self._queue_principal = queue.Queue(maxsize=0)
 
-        # Socket hacia el Control de Semáforos (Proceso local en PC2)
+        # Configuración de Sockets...
         self._sock_semaforos = self._contexto_zmq.socket(zmq.PUSH)
         self._sock_semaforos.connect(config.semaforos_url)
 
@@ -32,81 +41,96 @@ class GestorSalida:
         # Si PC3 está caído, limitar mensajes encolados para no consumir demasiada RAM
         self._sock_bd_principal.setsockopt(zmq.SNDHWM, 100)
 
-        print("[GestorSalida] Conectado a semáforos, BD réplica y BD principal")
+        # Creación de los hilos dedicados para cada receptor ZMQ
+        self._worker_semaforos = threading.Thread(target=self._loop_semaforos, daemon=True)
+        self._worker_replica = threading.Thread(target=self._loop_replica, daemon=True)
+        self._worker_principal = threading.Thread(target=self._loop_principal, daemon=True)
 
-    # Enviar comandos a los semáforos mediante PUSH
+        print("[GestorSalida] Conectado a semáforos, BD réplica y BD principal.")
+
+    # Implementa un ".start()" manual emulando el Thread para no romper main.py
+    def start(self) -> None:
+        print("[GestorSalida] Arrancando workers en hilos paralelos...")
+        self._worker_semaforos.start()
+        self._worker_replica.start()
+        self._worker_principal.start()
+
+    # --- HILOS WORKERS ---
+    
+    def _loop_semaforos(self):
+        while self._activo:
+            try:
+                msj = self._queue_semaforos.get(timeout=1.0)
+                self._sock_semaforos.send_string(msj) # Envío bloqueante sólo para su red
+            except queue.Empty:
+                pass
+            except zmq.ZMQError as e:
+                if self._activo: print(f"[GestorSalida - Semáforos] Error de red: {e}")
+
+    def _loop_replica(self):
+        while self._activo:
+            try:
+                msj = self._queue_replica.get(timeout=1.0)
+                self._sock_bd_replica.send_string(msj) # Envío bloqueante sólo para su red
+            except queue.Empty:
+                pass
+            except zmq.ZMQError as e:
+                if self._activo: print(f"[GestorSalida - Réplica] Error de red: {e}")
+
+    def _loop_principal(self):
+        while self._activo:
+            try:
+                msj = self._queue_principal.get(timeout=1.0)
+                # Verifica el estado final antes de intentar enviarlo sobre una conexión fallida o bloqueada
+                if self._health.is_pc3_disponible():
+                    self._sock_bd_principal.send_string(msj)
+            except queue.Empty:
+                pass
+            except zmq.ZMQError as e:
+                if self._activo: print(f"[GestorSalida - Principal] Error de red: {e}")
+
+
     def enviar_cmd(self, comando: ComandoSemaforo) -> None:
-        try:
-            # Enviar el comando al Control de Semáforos
-            self._sock_semaforos.send_string(comando.to_json(), zmq.NOBLOCK)
-            print(f"[GestorSalida] → Semáforo: {comando}")
-            
-            # Persistir el comando enviado en las BDs
-            self._dispatch_to_bd({
-                "tipo_registro": "semaforo",
-                "datos": json.loads(comando.to_json())
-            })
-        
-        # Si la cola está llena, descartar el comando
-        except zmq.Again:
-            print(f"[GestorSalida] ⚠ Cola de semáforos llena, comando descartado: {comando}")
+        # 1. Encola asíncronamente al hilo que rige a los semáforos locales
+        cmd_json = comando.to_json()
+        self._queue_semaforos.put(cmd_json)
 
-    # Persistir eventos de sensores en las BDs
+        # 2. Persistirlo asíncronamente en BD (replica y principal)
+        comando_dic = json.loads(cmd_json)
+        self._dispatch_to_bd({"tipo_registro": "semaforo", "datos": comando_dic})
+
     def persistir_evento(self, evento: EventoSensor) -> None:
-        registro = {
-            "tipo_registro": "evento",
-            "datos": evento.to_registro(),
-        }
-        self._dispatch_to_bd(registro)
+        self._dispatch_to_bd({"tipo_registro": "evento", "datos": evento.to_registro()})
 
-    # Persistir cambios de estado de tráfico detectados por RulesEngine
     def persistir_cambio(self, calle_id: str, estado_anterior: str, estado_nuevo: str, motivo: str) -> None:
-        registro = {
+        self._dispatch_to_bd({
             "tipo_registro": "congestion",
             "datos": {
-                "calle_id": calle_id,
-                "estado_anterior": estado_anterior,
-                "estado_nuevo": estado_nuevo,
-                "motivo": motivo,
-            },
-        }
-        self._dispatch_to_bd(registro)
-
-    # Persistir órdenes directas emitidas por el usuario
+                "calle_id": calle_id, "estado_anterior": estado_anterior,
+                "estado_nuevo": estado_nuevo, "motivo": motivo
+            }
+        })
+        
     def persistir_orden(self, orden: OrdenDirecta) -> None:
-        registro = {
-            "tipo_registro": "priorizacion",
-            "datos": orden.to_registro(),
-        }
-        self._dispatch_to_bd(registro)
+        self._dispatch_to_bd({"tipo_registro": "priorizacion", "datos": orden.to_registro()})
 
-    # Cierra los sockets ZMQ ordenadamente al apagar el servicio
+
+
+    def _dispatch_to_bd(self, registro: dict) -> None:
+        mensaje = json.dumps(registro)
+        # Se envía la petición hacia cada hilo gestor correspondiente.
+        self._queue_replica.put(mensaje)
+
+        # Al encolar ya filtramos si la principal está caída (ahorro de memoria)
+        if self._health.is_pc3_disponible():
+            self._queue_principal.put(mensaje)
+
+    def detener(self) -> None:
+        self._activo = False
+        self.cerrar()
+
     def cerrar(self) -> None:
         self._sock_semaforos.close()
         self._sock_bd_replica.close()
         self._sock_bd_principal.close()
         print("[GestorSalida] Sockets cerrados")
-
-    # Retorna el socket correcto según disponibilidad de PC3
-    def _get_bd_socket(self) -> zmq.Socket:
-        # Si PC3 está disponible, retornar el socket de la BD principal
-        if self._health.is_pc3_disponible():
-            return self._sock_bd_principal
-        return self._sock_bd_replica
-
-    # Envía el registro a la BD activa y siempre también a la réplica
-    def _dispatch_to_bd(self, registro: dict) -> None:
-        mensaje = json.dumps(registro)
-
-        # Siempre escribir en la réplica
-        try:
-            self._sock_bd_replica.send_string(mensaje, zmq.NOBLOCK)
-        except zmq.Again:
-            print("[GestorSalida] ⚠ Cola BD réplica llena")
-
-        # Escribir en principal solo si PC3 está disponible
-        if self._health.is_pc3_disponible():
-            try:
-                self._sock_bd_principal.send_string(mensaje, zmq.NOBLOCK)
-            except zmq.Again:
-                print("[GestorSalida] ⚠ Cola BD principal llena — solo réplica")
