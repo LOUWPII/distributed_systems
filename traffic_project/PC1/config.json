@@ -16,7 +16,9 @@
     "analitica_monitoreo_url_REQ": "tcp://10.43.99.93:5563",
     "monitoreo_analitica_url_REP": "tcp://*:5563",
     "monitoreo_bd_principal_url_REQ": "tcp://localhost:5564",
-    "bd_principal_monitoreo_url_REP": "tcp://*:5564"
+    "bd_principal_monitoreo_url_REP": "tcp://*:5564",
+    "city_manager_service_url_REP": "tcp://*:5555",
+    "city_manager_client_url_REQ": "tcp://localhost:5555"
   },
   "modo_broker": "simple",
   "sensores_topicos": {

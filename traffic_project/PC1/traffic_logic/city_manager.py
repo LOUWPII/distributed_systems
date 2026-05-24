@@ -1,6 +1,8 @@
 import threading
 import time
 import random
+import zmq
+import json
 
 from .traffic_state import TrafficState
 
@@ -69,12 +71,36 @@ class CityManager:
 
     def iniciar(self):
         """
-            Lanza el hilo de evolución de la ciudad
+        Lanza el hilo de evolución y el servicio ZMQ para los sensores
         """
+        # 1. Hilo de evolución física
         t = threading.Thread(target=self._hilo_evolucion, daemon=True)
         t.start()
         print(f"[CityManager] Simulación física iniciada.")
-        print(f"[CityManager] Calles monitoreadas: {list(self.traffic_states.keys())}")
+
+        # 2. Servidor ZMQ (REP) para atender a los sensores
+        context = zmq.Context()
+        socket = context.socket(zmq.REP)
+        socket.bind("tcp://*:5555")
+        print(f"[CityManager] Servidor REQ/REP iniciado en puerto 5555")
+
+        while True:
+            # Esperar petición del sensor
+            message = socket.recv_json()
+            action = message.get("action")
+            
+            if action == "get_nivel":
+                calle = message.get("calle")
+                nivel = self.get_nivel(calle)
+                print(f"[CityManager] Petición GET: {calle} -> {nivel:.2f}")
+                socket.send_json({"nivel": nivel})
+            
+            elif action == "set_semaforo":
+                calle = message.get("calle")
+                estado = message.get("estado")
+                self.set_estado_semaforo(calle, estado)
+                print(f"[CityManager] Petición SET: {calle} a {estado}")
+                socket.send_json({"status": "ok"})
 
     def get_nivel(self, calle):
         """

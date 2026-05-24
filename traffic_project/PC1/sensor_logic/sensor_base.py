@@ -1,36 +1,36 @@
+import zmq
+import json
 from abc import ABC, abstractmethod
 import random
 import time
 
-
 class SensorBase(ABC):
-    """
-         Es una clase abstracta que centraliza toda la lógica común de los tres tipos de sensores (Espiras, Cámaras y GPS).
-         Su propósito es evitar la duplicación de código, manejando tareas como la comunicación con el CityManager, la aplicación de ruido y
-         la gestión de la cola de salida, dejando únicamente la fórmula física de Greenshields específica a las subclases
-    """
 
-    def __init__(self, config_sensor, city_manager, cola, intervalo):
+    def __init__(self, config_sensor, city_manager_ref, cola, intervalo):
         """
-            Inicializa la clase
-            Args:
-                config_sensor (dict): Configuracion del sensor
-                city_manager (cityManager): Objeto cityManager para poder consultar el nivel de tráfico de la vía
-                cola (queue.Queue): Cola thread-safe que maneja el patrón productor consumidor, en esta cola los sensores
-                    depositan sus eventos
-                intervalo (int): Segundos entre cada generación de datos del sensor
+        Args:
+            config_sensor (dict): Configuracion del sensor
+            city_manager_ref (None): Ya no se usa, el sensor ahora es un proceso
+            cola (None): Ya no se usa, el sensor publica directamente
+            intervalo (int): Segundos entre cada generación
         """
         self.config = config_sensor
         self.interseccion = config_sensor.get('interseccion', '')
         self.sensor_id = config_sensor.get('sensor_id', '')
         self.direccion = config_sensor['direccion']
-        self.city_manager = city_manager
-        self.cola_salida = cola
         self.intervalo_s = intervalo
         self.contador_eventos = 0
-
-        # Construye el nombre de la calle (ej: fila_C)
         self.calle = self.config.get('calle_id', f"{self.direccion}_{self.interseccion[-2 if self.direccion == 'fila' else -1]}")
+
+        # Configuración de red para el nuevo proceso
+        self.context = zmq.Context()
+        # Socket para consultar al CityManager
+        self.req_socket = self.context.socket(zmq.REQ)
+        self.req_socket.connect("tcp://localhost:5555")
+        
+        # Socket para publicar eventos al Broker
+        self.pub_socket = self.context.socket(zmq.PUB)
+        self.pub_socket.connect("tcp://localhost:5550")
 
     def _aplicar_ruido(self, nivel_base):
         """
@@ -49,19 +49,34 @@ class SensorBase(ABC):
 
     def iniciar(self):
         """
-            Ciclo de vida del hilo del sensor
-            Este metodo se ejecuta en un hilo independiente para cada sensor y sigue un bucle infinito.
-            Cada hilo siempre consulta el nivel de su calle, aplica el ruido, ejecuta su medicion particular, deposita en la cola
-                y duerme el intervalo de segundos de generación
+        Ciclo de vida del proceso del sensor
         """
+        print(f"[Sensor {self.sensor_id}] Proceso iniciado en calle {self.calle}")
         while True:
-            nivel_base = self.city_manager.get_nivel(self.calle)
-            nivel_efectivo = self._aplicar_ruido(nivel_base)
+            try:
+                # 1. Consultar nivel al CityManager vía ZMQ
+                self.req_socket.send_json({"action": "get_nivel", "calle": self.calle})
+                respuesta = self.req_socket.recv_json()
+                nivel_base = respuesta.get("nivel", 0.0)
+                
+                # 2. Aplicar ruido y generar evento
+                nivel_efectivo = self._aplicar_ruido(nivel_base)
+                self.contador_eventos += 1
+                evento = self.generar_evento(nivel_efectivo)
+                evento['id_evento'] = self.contador_eventos
+                evento['sensor_id'] = self.sensor_id
+                evento['tipo_sensor'] = self.config.get('tipo')
 
-            # Generar el JSON y ponerlo en la cola thread-safe [7, 8]
-            self.contador_eventos += 1
-            evento = self.generar_evento(nivel_efectivo)
-            evento['id_evento'] = self.contador_eventos
-            self.cola_salida.put(evento)
+                # 3. Publicar evento directamente vía ZMQ
+                topico = evento['tipo_sensor']
+                self.pub_socket.send_multipart([
+                    topico.encode('utf-8'),
+                    json.dumps(evento).encode('utf-8')
+                ])
+                print(f"[Sensor {self.sensor_id} | {self.config.get('tipo').upper()}] Evento enviado: {json.dumps(evento)}")
 
-            time.sleep(self.intervalo_s)
+                time.sleep(self.intervalo_s)
+
+            except Exception as e:
+                print(f"[Sensor {self.sensor_id}] Error: {e}")
+                time.sleep(5)
