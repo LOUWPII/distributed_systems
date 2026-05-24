@@ -1,6 +1,7 @@
 import json
 import queue
 import threading
+from datetime import datetime, timezone
 import zmq
 
 from config import Config
@@ -107,7 +108,8 @@ class GestorSalida:
             "tipo_registro": "congestion",
             "datos": {
                 "calle_id": calle_id, "estado_anterior": estado_anterior,
-                "estado_nuevo": estado_nuevo, "motivo": motivo
+                "estado_nuevo": estado_nuevo, "motivo": motivo,
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         })
         

@@ -62,9 +62,9 @@ class EstadoCalle:
         Aplica las reglas de tráfico y retorna el nuevo EstadoTrafico.
 
         Reglas (en orden de prioridad, la primera que se cumple gana):
-          CONGESTION: cola alta Y velocidad baja Y GPS reporta ALTA
-          NORMAL:     cola baja Y velocidad alta Y GPS no reporta ALTA
-          Si no cumple ninguna completamente → mantiene el estado actual
+        CONGESTION: cola alta Y velocidad baja Y GPS reporta ALTA
+        NORMAL:     cola baja Y velocidad alta Y GPS no reporta ALTA
+        Si no cumple ninguna completamente → mantiene el estado actual
         """
         # Evaluar estado según las reglas
         if (
