@@ -1,13 +1,19 @@
 import threading
 import time
+import os
+import subprocess
+import sys
 
 import zmq
 
 from config import Config
 
-# Monitorea la salud del PC3 mediante health checks periódicos
-# Utiliza lock para evirtar un Race Condition
+
 class HealthMonitor(threading.Thread):
+    """
+    Monitorea salud de PC3 via heartbeat PING/PONG.
+    Expone estado y notifica cambios para activar/desactivar failover.
+    """
 
     def __init__(self, config: Config):
         super().__init__(daemon=True, name="HealthMonitor")
@@ -16,78 +22,84 @@ class HealthMonitor(threading.Thread):
         self._lock = threading.Lock()
         self._activo = True
         self._contexto_zmq = zmq.Context.instance()
+        self._listeners = []
+        self._failover_proc = None
 
-    # Interfaz pública — llamada desde GestorSalida (hilo distinto)
     def is_pc3_disponible(self) -> bool:
-        # El lock garantiza que se lee el valor más reciente.
         with self._lock:
             return self._pc3_disponible
 
-    # Señala al hilo que debe terminar su ciclo.
+    def add_listener(self, callback) -> None:
+        self._listeners.append(callback)
+
     def detener(self) -> None:
         self._activo = False
 
-    # Inicializa o recrea el socket REQ conectado a PC3.
     def _crear_socket(self) -> None:
         self._socket = self._contexto_zmq.socket(zmq.REQ)
         self._socket.setsockopt(zmq.RCVTIMEO, self._config.health_timeout_s * 1000)
         self._socket.setsockopt(zmq.LINGER, 0)
         self._socket.connect(self._config.pc3_health_url)
 
-    # Ciclo principal del hilo. Se ejecuta hasta que detener() sea llamado.
-    # En cada iteración: envía PING, esperando un PONG del PC3
     def run(self) -> None:
-        print(f"[HealthMonitor] Iniciado — verificando PC3 cada {self._config.health_intervalo_s}s")
-        
+        print(f"[HealthMonitor] Iniciado. Heartbeat cada {self._config.health_intervalo_s}s")
         self._crear_socket()
 
-        # Mientras el monitor esté activo, verifica la salud del PC3
         while self._activo:
             resultado = self.check_health()
             self._actualizar_estado(resultado)
             time.sleep(self._config.health_intervalo_s)
 
-        # Cierra el socket cuando el monitor se detiene
-        if hasattr(self, '_socket'):
+        if hasattr(self, "_socket"):
             self._socket.close()
         print("[HealthMonitor] Detenido")
 
-    # Verifica la salud del PC3
     def check_health(self) -> bool:
         try:
-            # Envía un PING al PC3
             self._socket.send_string("PING")
-            # Espera un PONG del PC3
             respuesta = self._socket.recv_string()
-            # Si la respuesta es PONG, el PC3 está disponible
             return respuesta == "PONG"
-        except zmq.Again:
-            # Timeout: PC3 no respondió. (Patrón Lazy Pirate: destruir y recrear)
-            self._socket.close()
-            self._crear_socket()
-            return False
-        # Si hay error ZMQ, cerrar y recrear el socket
-        except zmq.ZMQError:
+        except (zmq.Again, zmq.ZMQError):
             self._socket.close()
             self._crear_socket()
             return False
 
-    # Actualiza pc3_disponible con el resultado del check
     def _actualizar_estado(self, nuevo_estado: bool) -> None:
-        # Usa lock para evitar Race conditions
         with self._lock:
             estado_anterior = self._pc3_disponible
             self._pc3_disponible = nuevo_estado
+            estado_nuevo = self._pc3_disponible
 
-        # Imprime mensajes solo cuando el estado cambia
-        if estado_anterior and not nuevo_estado:
-            print(
-                "[HealthMonitor] ⚠ PC3 NO DISPONIBLE — "
-                "redirigiendo escrituras a BD Réplica"
-            )
-        # Si el PC3 se recupera, imprime un mensaje
-        elif not estado_anterior and nuevo_estado:
-            print(
-                "[HealthMonitor] ✓ PC3 RECUPERADO — "
-                "reanudando escrituras en BD Principal"
-            )
+        if estado_anterior != estado_nuevo:
+            if not estado_nuevo:
+                print("[HealthMonitor] PC3 NO DISPONIBLE. Activando failover.")
+                self._activar_monitoreo_pc2()
+            else:
+                print("[HealthMonitor] PC3 RECUPERADO. Desactivando failover.")
+                self._desactivar_monitoreo_pc2()
+            self._notificar_listeners(estado_nuevo)
+
+    def _notificar_listeners(self, pc3_disponible: bool) -> None:
+        for callback in self._listeners:
+            try:
+                callback(pc3_disponible)
+            except Exception as error:
+                print(f"[HealthMonitor] Error notificando listener: {error}")
+
+    def _activar_monitoreo_pc2(self) -> None:
+        if self._failover_proc is not None and self._failover_proc.poll() is None:
+            return
+        script_path = os.path.join(os.path.dirname(__file__), "..", "monitoreo_consulta_failover.py")
+        try:
+            self._failover_proc = subprocess.Popen([sys.executable, script_path], cwd=os.path.join(os.path.dirname(__file__), ".."))
+            print("[HealthMonitor] Monitoreo/consulta de PC2 levantado.")
+        except Exception as error:
+            print(f"[HealthMonitor] Error levantando monitoreo PC2: {error}")
+
+    def _desactivar_monitoreo_pc2(self) -> None:
+        if self._failover_proc is None:
+            return
+        if self._failover_proc.poll() is None:
+            self._failover_proc.terminate()
+            print("[HealthMonitor] Monitoreo/consulta de PC2 detenido.")
+        self._failover_proc = None
