@@ -56,10 +56,13 @@ class HealthMonitor(threading.Thread):
 
     def check_health(self) -> bool:
         try:
+            print(f"[HealthMonitor] -> PING {self._config.pc3_health_url}")
             self._socket.send_string("PING")
             respuesta = self._socket.recv_string()
+            print(f"[HealthMonitor] <- {respuesta}")
             return respuesta == "PONG"
         except (zmq.Again, zmq.ZMQError):
+            print(f"[HealthMonitor] !! Timeout/ERROR esperando PONG en {self._config.pc3_health_url}")
             self._socket.close()
             self._crear_socket()
             return False
@@ -91,8 +94,13 @@ class HealthMonitor(threading.Thread):
             return
         script_path = os.path.join(os.path.dirname(__file__), "..", "monitoreo_consulta_failover.py")
         try:
-            self._failover_proc = subprocess.Popen([sys.executable, script_path], cwd=os.path.join(os.path.dirname(__file__), ".."))
-            print("[HealthMonitor] Monitoreo/consulta de PC2 levantado.")
+            create_flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+            self._failover_proc = subprocess.Popen(
+                [sys.executable, script_path],
+                cwd=os.path.join(os.path.dirname(__file__), ".."),
+                creationflags=create_flags,
+            )
+            print("[HealthMonitor] Monitoreo/consulta de PC2 levantado en nueva terminal.")
         except Exception as error:
             print(f"[HealthMonitor] Error levantando monitoreo PC2: {error}")
 

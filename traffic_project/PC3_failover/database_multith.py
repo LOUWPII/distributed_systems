@@ -16,7 +16,7 @@ def load_urls():
     red = data["red"]
     pull_url = red["bd_principal_analitica_url_PULL"]
     rep_monitoreo_url = red["bd_principal_monitoreo_url_REP"]
-    rep_health_url = red.get("bd_principal_health_url_REP", rep_monitoreo_url)
+    rep_health_url = red.get("health_analitica_url_REP", rep_monitoreo_url)
     return pull_url, rep_health_url, rep_monitoreo_url
 
 

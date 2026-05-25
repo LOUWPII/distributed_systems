@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from urllib.parse import urlparse
 
 import zmq
 
@@ -32,19 +33,37 @@ class MonitoreoConsulta:
     def __init__(self):
         self.context = zmq.Context()
         self.req_analitica_url, self.req_db_url = load_urls()
+        self.timeout_ms = 3000
 
-        self.socket_analitica = self.context.socket(zmq.REQ)
-        self.socket_analitica.connect(self.req_analitica_url)
+        self.socket_analitica = self._crear_socket_req(self.req_analitica_url)
+        self.socket_db = self._crear_socket_req(self.req_db_url)
 
-        self.socket_db = self.context.socket(zmq.REQ)
-        self.socket_db.connect(self.req_db_url)
-
-        timeout_ms = 3000
-        self.socket_analitica.setsockopt(zmq.RCVTIMEO, timeout_ms)
-        self.socket_db.setsockopt(zmq.RCVTIMEO, timeout_ms)
+        self.analitica_fallback_url = self._build_local_fallback(self.req_analitica_url)
+        self.db_fallback_url = self._build_local_fallback(self.req_db_url)
 
         print(f"[Monitoreo] Inicializado. Conectado a Analitica en {self.req_analitica_url}")
         print(f"[Monitoreo] Conectado a BD Principal en {self.req_db_url}")
+        if self.analitica_fallback_url:
+            print(f"[Monitoreo] Fallback Analitica habilitado en {self.analitica_fallback_url}")
+
+    def _crear_socket_req(self, url):
+        socket = self.context.socket(zmq.REQ)
+        socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
+        socket.setsockopt(zmq.LINGER, 0)
+        socket.connect(url)
+        return socket
+
+    def _build_local_fallback(self, url):
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme != "tcp" or parsed.port is None:
+                return None
+            host = parsed.hostname or ""
+            if host in ("localhost", "127.0.0.1"):
+                return None
+            return f"tcp://localhost:{parsed.port}"
+        except Exception:
+            return None
 
     def _timestamp(self):
         return datetime.now().isoformat(timespec="seconds")
@@ -53,7 +72,8 @@ class MonitoreoConsulta:
         print(f"[{self._timestamp()}][Monitoreo][RESULTADO] {titulo}")
         print(json.dumps(payload, indent=2, ensure_ascii=False))
 
-    def _enviar_peticion(self, socket, request, descripcion_operacion, destino):
+    def _enviar_peticion(self, socket_name, request, descripcion_operacion, destino, fallback_url=None):
+        socket = getattr(self, socket_name)
         print(f"\n[{self._timestamp()}][Monitoreo][OP] {descripcion_operacion}")
         print(f"[{self._timestamp()}][Monitoreo][REQ -> {destino}] {json.dumps(request, ensure_ascii=False)}")
 
@@ -65,7 +85,30 @@ class MonitoreoConsulta:
             return respuesta
         except zmq.Again:
             print(f"[{self._timestamp()}][Monitoreo][ERROR] Timeout: {destino} no respondio.")
-            return None
+            try:
+                getattr(self, socket_name).close()
+            except Exception:
+                pass
+            setattr(self, socket_name, self._crear_socket_req(self.req_db_url if socket_name == "socket_db" else self.req_analitica_url))
+            if not fallback_url:
+                return None
+
+            print(f"[{self._timestamp()}][Monitoreo][RETRY] Reintentando {destino} via {fallback_url}")
+            try:
+                fallback_socket = self._crear_socket_req(fallback_url)
+                fallback_socket.send_string(json.dumps(request))
+                respuesta = json.loads(fallback_socket.recv_string())
+                fallback_socket.close()
+                print(f"[{self._timestamp()}][Monitoreo][REP <- {destino} fallback]")
+                if socket_name == "socket_analitica":
+                    self.req_analitica_url = fallback_url
+                else:
+                    self.req_db_url = fallback_url
+                setattr(self, socket_name, self._crear_socket_req(fallback_url))
+                return respuesta
+            except Exception as retry_error:
+                print(f"[{self._timestamp()}][Monitoreo][ERROR] Reintento fallido en {destino}: {retry_error}")
+                return None
         except Exception as error:
             print(f"[{self._timestamp()}][Monitoreo][ERROR] Fallo en comunicacion con {destino}: {error}")
             return None
@@ -73,28 +116,28 @@ class MonitoreoConsulta:
     def consultar_estado_actual(self, calle_id):
         op = f"Consulta de estado trafico en tiempo real para calle {calle_id}"
         req = {"tipo": "CONSULTA_ESTADO_ACTUAL", "calle_id": calle_id}
-        respuesta = self._enviar_peticion(self.socket_analitica, req, op, "ANALITICA")
+        respuesta = self._enviar_peticion("socket_analitica", req, op, "ANALITICA", self.analitica_fallback_url)
         if respuesta:
             self._imprimir_resultado(f"Estado actual de '{calle_id}'", respuesta)
 
     def consultar_todos_estados(self):
         op = "Consulta global de estado en tiempo real"
         req = {"tipo": "CONSULTA_TODOS_ESTADOS"}
-        respuesta = self._enviar_peticion(self.socket_analitica, req, op, "ANALITICA")
+        respuesta = self._enviar_peticion("socket_analitica", req, op, "ANALITICA", self.analitica_fallback_url)
         if respuesta:
             self._imprimir_resultado("Estado global", respuesta)
 
     def consultar_interseccion_realtime(self, interseccion_id):
         op = f"Consulta de interseccion en tiempo real ({interseccion_id})"
         req = {"tipo": "CONSULTA_INTERSECCION", "interseccion_id": interseccion_id}
-        respuesta = self._enviar_peticion(self.socket_analitica, req, op, "ANALITICA")
+        respuesta = self._enviar_peticion("socket_analitica", req, op, "ANALITICA", self.analitica_fallback_url)
         if respuesta:
             self._imprimir_resultado(f"Interseccion '{interseccion_id}' en tiempo real", respuesta)
 
     def consultar_fechas_congestiones(self):
         op = "Consulta de fechas de congestiones"
         req = {"tipo": "CONSULTA_FECHAS_CONGESTIONES"}
-        respuesta = self._enviar_peticion(self.socket_db, req, op, "BD_PRINCIPAL")
+        respuesta = self._enviar_peticion("socket_db", req, op, "BD_PRINCIPAL", self.db_fallback_url)
         if not respuesta:
             return
         if respuesta.get("estado") != "OK":
@@ -113,7 +156,7 @@ class MonitoreoConsulta:
     def consultar_cambios_semaforos(self):
         op = "Consulta de cambios de color de semaforos"
         req = {"tipo": "CONSULTA_CAMBIOS_SEMAFOROS"}
-        respuesta = self._enviar_peticion(self.socket_db, req, op, "BD_PRINCIPAL")
+        respuesta = self._enviar_peticion("socket_db", req, op, "BD_PRINCIPAL", self.db_fallback_url)
         if not respuesta:
             return
         if respuesta.get("estado") != "OK":
@@ -125,7 +168,7 @@ class MonitoreoConsulta:
     def consultar_priorizaciones_ambulancia(self):
         op = "Consulta de priorizaciones de ambulancias"
         req = {"tipo": "CONSULTA_PRIORIZACIONES_AMBULANCIA"}
-        respuesta = self._enviar_peticion(self.socket_db, req, op, "BD_PRINCIPAL")
+        respuesta = self._enviar_peticion("socket_db", req, op, "BD_PRINCIPAL", self.db_fallback_url)
         if not respuesta:
             return
         if respuesta.get("estado") != "OK":
@@ -155,7 +198,7 @@ class MonitoreoConsulta:
             f"tipo={req['tipo']}, accion={accion}, calle_id={calle_id}, duracion_s={duracion_s}, motivo={motivo}"
         )
         op = f"Envio de instruccion de control ({accion}) para calle {calle_id}"
-        respuesta = self._enviar_peticion(self.socket_analitica, req, op, "ANALITICA")
+        respuesta = self._enviar_peticion("socket_analitica", req, op, "ANALITICA", self.analitica_fallback_url)
         if respuesta:
             self._imprimir_resultado("Comando a analitica", respuesta)
 
