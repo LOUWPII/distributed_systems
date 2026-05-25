@@ -13,7 +13,7 @@
     "bd_principal_analitica_url_PULL": "tcp://*:5558",
     "analitica_health_url_REQ": "tcp://10.43.99.93:5562",
     "health_analitica_url_REP": "tcp://*:5562",
-    "analitica_monitoreo_url_REQ": "tcp://10.43.99.93:5563",
+    "analitica_monitoreo_url_REQ": "tcp://10.43.98.246:5563",
     "monitoreo_analitica_url_REP": "tcp://*:5563",
     "monitoreo_bd_principal_url_REQ": "tcp://localhost:5564",
     "bd_principal_monitoreo_url_REP": "tcp://*:5564",
