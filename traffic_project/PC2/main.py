@@ -1,15 +1,15 @@
 """
-main.py — Punto de entrada del Servicio de Analítica (PC2).
+    main.py — Punto de entrada del Servicio de Analítica (PC2).
 
-Responsabilidades:
-  1. Cargar la configuración desde config.json
-  2. Crear la event_queue compartida entre EventReceiver y RulesEngine
-  3. Instanciar todos los componentes en el orden correcto (dependencias primero)
-  4. Arrancar los hilos
-  5. Esperar señal de interrupción (Ctrl+C) y apagar ordenadamente
+    Responsabilidades:
+    1. Cargar la configuración desde config.json
+    2. Crear la event_queue compartida entre EventReceiver y RulesEngine
+    3. Instanciar todos los componentes en el orden correcto (dependencias primero)
+    4. Arrancar los hilos
+    5. Esperar señal de interrupción (Ctrl+C) y apagar ordenadamente
 
-Orden de instanciación (importante — las dependencias deben existir primero):
-  Config → HealthMonitor → GestorSalida → RulesEngine → EventReceiver → QueryHandler
+    Orden de instanciación (importante — las dependencias deben existir primero):
+    Config → HealthMonitor → GestorSalida → RulesEngine → EventReceiver → QueryHandler
 """
 
 import queue

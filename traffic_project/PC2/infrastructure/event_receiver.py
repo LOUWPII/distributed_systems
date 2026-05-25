@@ -1,3 +1,13 @@
+"""
+    Desarollado por: Juan Felipe Gomez, Sebastian Gaibor y David Beltran Gomez
+    Componente de ingesta de eventos encargado de recibir tráfico desde el Broker.
+    Implementa patrón PUB/SUB utilizando sockets SUB sobre infraestructura ZeroMQ.
+    Se suscribe dinámicamente a tópicos asociados a sensores de cámara, GPS y espiras.
+    Deserializa los JSON y transforma mensajes en objetos de dominio.
+    Publica eventos válidos en colas para procesamiento por RulesEngine.
+    Aplica validaciones defensivas y descarte controlado de mensajes inconsistentes.
+"""
+
 import json
 import queue
 import threading
@@ -9,18 +19,9 @@ from dtos import evento_desde_topico, EventoSensor
 
 
 class EventReceiver(threading.Thread):
-    """
-    Hilo receptor de eventos de sensores.
-
-    La event_queue es de tipo threading.Queue, que es thread-safe por diseño.
-    EventReceiver hace put() y RulesEngine hace get() desde hilos distintos
-    sin necesidad de locks explícitos.
-
-    El socket SUB de ZMQ bloquea en recv() cuando no hay mensajes, lo cual
-    es el comportamiento correcto para un receptor: duerme sin consumir CPU
-    hasta que llega algo.
-    """
-
+    
+    # El constructor del EventReceiver inicializa el hilo con la configuración proporcionada y una cola para almacenar los eventos recibidos, 
+    # además de preparar el contexto de ZeroMQ para la comunicación.
     def __init__(self, config: Config, event_queue: queue.Queue):
         super().__init__(daemon=True, name="EventReceiver")
         self._config = config

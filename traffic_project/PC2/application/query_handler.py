@@ -1,3 +1,13 @@
+"""
+    Desarollado por: Juan Felipe Gomez, Sebastian Gaibor y David Beltran Gomez
+    Servidor de consultas síncronas del PC2 utilizando ZeroMQ REQ/REP.
+    Expone operaciones de monitoreo, consulta global, intersecciones y control manual.
+    Deserializa solicitudes JSON y enruta dinámicamente cada operación mediante dispatcher.
+    Delega la lógica de negocio y acceso a los estados al módulo RulesEngine.
+    Gestiona órdenes directas de control semafórico mediante objetos de dominio especializados.
+    Funciona como interfaz transaccional entre clientes de monitoreo y núcleo analítico.
+"""
+
 import json
 import threading
 import zmq

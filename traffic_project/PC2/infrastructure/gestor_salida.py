@@ -1,3 +1,12 @@
+"""
+    Orquestador de salida encargado del despacho de comandos y persistencia.
+    Administra los workers asíncronos independientes para semáforos y bases de datos remotas.
+    Envía mensajes mediante sockets PUSH hacia módulos de control y almacenamiento.
+    Integra lógica de failover consultando el estado de disponibilidad mediante HealthMonitor.
+    Realiza replicación activa hacia nodos principales y de respaldo de persistencia.
+    Utiliza patrón Productor-Consumidor y procesamiento concurrente basado en hilos.
+"""
+
 import json
 import queue
 import threading
@@ -63,7 +72,8 @@ class GestorSalida:
         self._worker_principal.start()
 
     # --- HILOS WORKERS ---
-    
+    # Cada uno de estos loops es independiente y se bloquea sólo en su propia cola y socket,
+    # lo que garantiza que un bloqueo o caída en un destino no afecte a los demás ni al RulesEngine.    
     def _loop_semaforos(self):
         while self._activo:
             try:
@@ -74,6 +84,7 @@ class GestorSalida:
             except zmq.ZMQError as e:
                 if self._activo: print(f"[GestorSalida - Semáforos] Error de red: {e}")
 
+    # El loop de la réplica no tiene lógica de failover, siempre intenta enviar todo lo que llega.
     def _loop_replica(self):
         while self._activo:
             try:
@@ -86,6 +97,7 @@ class GestorSalida:
             except zmq.ZMQError as e:
                 if self._activo: print(f"[GestorSalida - Réplica] Error de red: {e}")
 
+    # El loop de la principal verifica el estado de disponibilidad antes de cada envío para evitar bloqueos prolongados.
     def _loop_principal(self):
         while self._activo:
             try:
@@ -98,9 +110,10 @@ class GestorSalida:
             except queue.Empty:
                 pass
             except zmq.ZMQError as e:
+                # Si ocurre un error de red, lo más probable es que PC3 esté caído o la conexión esté bloqueada.
                 if self._activo: print(f"[GestorSalida - Principal] Error de red: {e}")
 
-
+    # --- MÉTODOS PÚBLICOS PARA EL RESTO DE LA APLICACIÓN ---
     def enviar_cmd(self, comando: ComandoSemaforo) -> None:
         # 1. Encola asíncronamente al hilo que rige a los semáforos locales
         cmd_json = comando.to_json()
@@ -110,9 +123,11 @@ class GestorSalida:
         comando_dic = json.loads(cmd_json)
         self._dispatch_to_bd({"tipo_registro": "semaforo", "datos": comando_dic})
 
+    # Estos métodos son llamados por el RulesEngine para persistir eventos, cambios de estado y órdenes directas.
     def persistir_evento(self, evento: EventoSensor) -> None:
         self._dispatch_to_bd({"tipo_registro": "evento", "datos": evento.to_registro()})
 
+    # El método de persistencia de cambios de estado incluye un motivo para facilitar el análisis posterior.
     def persistir_cambio(self, calle_id: str, estado_anterior: str, estado_nuevo: str, motivo: str) -> None:
         self._dispatch_to_bd({
             "tipo_registro": "congestion",
@@ -123,9 +138,11 @@ class GestorSalida:
             }
         })
         
+    #  La persistencia de órdenes directas también se registra con un motivo para análisis de priorizaciones.
     def persistir_orden(self, orden: OrdenDirecta) -> None:
         self._dispatch_to_bd({"tipo_registro": "priorizacion", "datos": orden.to_registro()})
 
+    # Método interno que se encarga de enviar el mismo mensaje a ambos destinos de persistencia (principal y réplica).
     def _dispatch_to_bd(self, registro: dict) -> None:
         mensaje = json.dumps(registro)
         # Se envía la petición hacia cada hilo gestor correspondiente.
@@ -138,14 +155,17 @@ class GestorSalida:
             with self._stats_lock:
                 self._stats["principal_omitidos"] += 1
 
+    # Método para obtener métricas de envío y omisión hacia la BD Principal, útil para monitoreo y análisis de failover.
     def obtener_metricas(self) -> dict:
         with self._stats_lock:
             return dict(self._stats)
 
+    # Método para detener el gestor de salida y cerrar los sockets de forma ordenada.
     def detener(self) -> None:
         self._activo = False
         self.cerrar()
 
+    # Cierra los sockets de forma ordenada para liberar recursos y evitar bloqueos en el shutdown.
     def cerrar(self) -> None:
         self._sock_semaforos.close()
         self._sock_bd_replica.close()

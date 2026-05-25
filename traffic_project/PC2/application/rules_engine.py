@@ -1,8 +1,20 @@
+"""
+    Desarollado por: Juan Felipe Gomez, Sebastian Gaibor y David Beltran Gomez
+    Motor central de reglas y procesamiento de eventos del sistema.
+    Consume eventos en tiempo real y mantiene el estado global de tráfico en memoria.
+    Aplica reglas automáticas de congestión, priorización y control de los semaforos.
+    Integra órdenes manuales y prestablecidas sobre las intersecciones y semáforos.
+    Coordina persistencia y emisión de comandos mediante GestorSalida.
+    Implementa arquitectura event-driven con colas thread-safe y procesamiento concurrente.
+    Utiliza patrones de máquina de estados, sincronización por locks y timeouts.
+"""
+
 import queue
 import threading
 from datetime import datetime, timezone
 from typing import Optional
 from config import Config
+
 # Imports desde tu nueva estructura de dominio
 from dominio.estado_calle import EstadoCalle
 from dominio.interseccion import Interseccion
@@ -19,7 +31,7 @@ from enums import EstadoSemaforo, EstadoTrafico, TipoCalle
 # Aquí asumo que dejarás GestorSalida en servicios o lo mandarás a infrastructure/
 from infrastructure.gestor_salida import GestorSalida
 
-# 
+
 class RulesEngine(threading.Thread):
     """
     Hilo principal de procesamiento de eventos y toma de decisiones.

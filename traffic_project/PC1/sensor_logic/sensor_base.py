@@ -1,3 +1,11 @@
+"""
+    Clase base abstracta para la jerarquía de sensores de tráfico.
+    Define el flujo de adquisición, procesamiento y publicación de eventos.
+    Obtiene métricas viales desde CityManager, aplica ruido y normaliza datos.
+    Publica eventos estructurados en una cola thread-safe compartida con el publicador ZMQ.
+    Sirve como contrato base para sensores de cámara, espira electromagnética y GPS.
+    Integra concurrencia mediante hilos y desacoplamiento productor-consumidor.
+"""
 import zmq
 import json
 from abc import ABC, abstractmethod
@@ -32,25 +40,20 @@ class SensorBase(ABC):
         self.pub_socket = self.context.socket(zmq.PUB)
         self.pub_socket.connect("tcp://localhost:5550")
 
+    # Este metodo se encarga de añadir algo de ruido a la lectura de los sensores para simular el tráfico real
     def _aplicar_ruido(self, nivel_base):
-        """
-            Este metodo se encarga de añadir algo de ruido a la lectura de los sensores para simular el tráfico real
-        """
         sigma_v = random.uniform(0.05, 0.20)
         ruido = random.gauss(0, nivel_base * sigma_v)
         return max(0.0, min(1.0, nivel_base + ruido))
 
+    # Cada subclase implementará su propia fórmula de Greenshields para generar el evento específico del sensor
     @abstractmethod
     def generar_evento(self, nivel):
-        """
-            Cada subclase implementará su fórmula de Greenshields
-        """
         pass
 
+    # El método iniciar se encarga de ejecutar el ciclo de vida del sensor, consultando al CityManager, 
+    # generando eventos con ruido y publicándolos directamente al Broker a través de ZMQ. 
     def iniciar(self):
-        """
-        Ciclo de vida del proceso del sensor
-        """
         print(f"[Sensor {self.sensor_id}] Proceso iniciado en calle {self.calle}")
         while True:
             try:

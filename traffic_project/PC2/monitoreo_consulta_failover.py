@@ -1,3 +1,14 @@
+"""
+    Desarollado por: Juan Felipe Gomez, Sebastian Gaibor y David Beltran Gomez
+    Cliente interactivo de monitoreo de respaldo ejecutado en PC2 durante escenarios de failover.
+    Establece conexiones ZeroMQ REQ hacia Analítica y hacia la base de datos réplica.
+    Construye solicitudes JSON estructuradas y registra trazabilidad completa de operaciones REQ/REP.
+    Consulta estado operativo en tiempo real y datos persistidos desde almacenamiento secundario.
+    Reconstruye sockets automáticamente ante timeouts o fallos de comunicación distribuidos.
+    Funciona como interfaz integrada al esquema de alta disponibilidad del sistema.
+    Implementa patrón Request-Reply para supervisión operativa distribuida.
+"""
+
 import json
 import os
 import sys
@@ -22,6 +33,8 @@ def load_urls():
 
 
 class MonitoreoConsultaPC2:
+    # El constructor de la clase MonitoreoConsultaPC2 se encarga de cargar las URLs de los servicios de Analítica y la base de datos réplica desde el archivo de configuración,
+    # estableciendo conexiones REQ hacia ambos servicios y configurando timeouts para garantizar la capacidad de respuesta del monitoreo incluso en escenarios de fallo.
     def __init__(self):
         self.context = zmq.Context()
         self.analitica_rep_url, self.db_replica_rep_url = load_urls()
@@ -35,9 +48,12 @@ class MonitoreoConsultaPC2:
         self.socket_db.setsockopt(zmq.RCVTIMEO, 3000)
         print(f"[Monitoreo-PC2] Failover activo. Analitica={self.req_analitica_url} DBReplica={self.db_req_url}")
 
+    # El método _ts se utiliza para generar una marca de tiempo formateada que se incluye en los logs de monitoreo, facilitando la trazabilidad de las operaciones realizadas.
     def _ts(self):
         return datetime.now().isoformat(timespec="seconds")
 
+    # El método _send se encarga de enviar una solicitud JSON a través del socket especificado, registrando la operación en los logs 
+    # y manejando cualquier error de comunicación que pueda ocurrir,
     def _send(self, socket, req, destino):
         print(f"[{self._ts()}][Monitoreo-PC2][REQ->{destino}] {json.dumps(req)}")
         socket.send_string(json.dumps(req))
@@ -61,6 +77,9 @@ class MonitoreoConsultaPC2:
             except Exception:
                 pass
 
+    # El método menu presenta un menú interactivo al usuario, permitiendo seleccionar diferentes consultas para monitorear el estado del sistema durante el failover,
+    # y utilizando el método _send para enviar las solicitudes correspondientes a Analítica o a la base de datos réplica según la opción seleccionada,
+    # registrando todas las operaciones en los logs para facilitar la trazabilidad y el diagnóstico.
     def menu(self):
         while True:
             print("\n==== MONITOREO PC2 (FAILOVER) ====")

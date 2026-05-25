@@ -1,3 +1,14 @@
+"""
+    Desarollado por: Juan Felipe Gomez, Sebastian Gaibor y David Beltran Gomez
+    Servicio de persistencia principal desplegado en PC3 para almacenamiento y consultas históricas.
+    Consume registros asíncronos desde Analítica mediante sockets PULL sobre infraestructura ZeroMQ.
+    Persiste eventos y métricas en archivos JSONL segmentados por categorias.
+    Expone interfaz síncrona REQ/REP para monitoreo, consultas históricas y heartbeats PING/PONG.
+    Ejecuta procesamiento multihilo separando ingesta, consultas y verificación de disponibilidad.
+    Se comunica con Analítica, monitoreo central y mecanismos externos de failover automático.
+    Implementa arquitectura con persistencia append-only y tolerancia a fallos.
+"""
+
 import json
 import os
 import threading
@@ -9,7 +20,8 @@ from jsonl_storage import JSONLStorage
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "PC2", "config", "config.json")
 DATA_FOLDER = "bd_principal_data"
 
-
+# La función load_urls se encarga de cargar las URLs de los servicios de Analítica y monitoreo desde el archivo de configuración,
+# asegurando que el servicio de base de datos principal pueda establecer las conexiones necesarias para su funcionamiento.
 def load_urls():
     with open(CONFIG_FILE, "r", encoding="utf-8") as file:
         data = json.load(file)
@@ -38,6 +50,8 @@ class DatabaseService:
             "semaforo": JSONLStorage(os.path.join(DATA_FOLDER, "semaforos.jsonl")),
         }
 
+    # El método _safe_read_all se encarga de leer de forma segura todos los registros de una categoría específica,
+    # manejando cualquier error de lectura y devolviendo una lista vacía en caso de problemas.
     def _safe_read_all(self, storage_key: str):
         storage = self.storages.get(storage_key)
         if storage is None:
@@ -48,6 +62,8 @@ class DatabaseService:
             print(f"[DB-Consultas] Error leyendo {storage_key}: {error}")
             return []
 
+    # El método _atender_consulta se encarga de interpretar las solicitudes recibidas a través del socket REP,
+    # procesando diferentes tipos de consultas y devolviendo respuestas estructuradas según el tipo de consulta solicitada.
     def _atender_consulta(self, solicitud_raw: str):
         try:
             solicitud = json.loads(solicitud_raw)
@@ -56,6 +72,7 @@ class DatabaseService:
 
         tipo = solicitud.get("tipo")
 
+        # Consulta de fechas de congestiones: Devuelve una lista de congestiones con sus respectivas fechas y estados.
         if tipo == "CONSULTA_FECHAS_CONGESTIONES":
             congestiones = self._safe_read_all("congestion")
             fechas = []
@@ -74,6 +91,7 @@ class DatabaseService:
                 "mensaje": "Registros antiguos pueden venir sin fecha (SIN_FECHA).",
             }
 
+        # Consulta de cambios de semáforos: Devuelve el total de cambios de semáforo registrados.
         if tipo == "CONSULTA_CAMBIOS_SEMAFOROS":
             semaforos = self._safe_read_all("semaforo")
             return {
@@ -82,6 +100,7 @@ class DatabaseService:
                 "total_cambios_color": len(semaforos),
             }
 
+        # Consulta de priorizaciones de ambulancia: Devuelve una lista de priorizaciones con sus respectivas fechas, motivos y calles.
         if tipo == "CONSULTA_PRIORIZACIONES_AMBULANCIA":
             priorizaciones = self._safe_read_all("priorizacion")
             detalle = []
@@ -101,6 +120,8 @@ class DatabaseService:
 
         return {"estado": "ERROR", "mensaje": f"Tipo de consulta no soportado: {tipo}"}
 
+    # El método _loop_ingesta se encarga de recibir eventos asíncronos a través de un socket PULL, persistiendo cada evento 
+    # en la categoría correspondiente utilizando los objetos JSONLStorage, y manejando cualquier error de recepción o persistencia que pueda ocurrir durante el proceso.
     def _loop_ingesta(self):
         pull_socket = self.context.socket(zmq.PULL)
         try:
@@ -128,6 +149,8 @@ class DatabaseService:
         pull_socket.close()
         print("[DB-Ingesta] Hilo detenido")
 
+    # El método _loop_consultas se encarga de atender solicitudes síncronas recibidas a través de un socket REP,
+    # interpretando cada solicitud y devolviendo una respuesta estructurada.
     def _loop_consultas(self):
         rep_socket = self.context.socket(zmq.REP)
         try:
@@ -139,6 +162,7 @@ class DatabaseService:
             rep_socket.close()
             return
 
+        # Si la URL de monitoreo es diferente a la de health, intenta bindear también el puerto de monitoreo para permitir consultas y monitoreo simultáneo.
         if REP_MONITOREO_URL != REP_HEALTH_URL:
             try:
                 rep_socket.bind(REP_MONITOREO_URL)
@@ -152,12 +176,16 @@ class DatabaseService:
         rep_socket.setsockopt(zmq.RCVTIMEO, 1000)
         print(f"[DB-Consultas] Hilo REP activo en {REP_HEALTH_URL} y {REP_MONITOREO_URL}")
 
+        # El loop principal de consultas se ejecuta continuamente mientras el servicio esté activo, intentando recibir solicitudes del socket REP.
         while self.running:
             try:
                 solicitud = rep_socket.recv_string()
+                # Si la solicitud es un heartbeat PING, responde con PONG para indicar que el servicio está disponible.
                 if solicitud == "PING":
                     rep_socket.send_string("PONG")
                     print("[DB-Consultas] Solicitud PING, retornando PONG")
+                # Para cualquier otra solicitud, se procesa la consulta utilizando el método _atender_consulta y se devuelve la respuesta estructurada, registrando tanto la solicitud recibida 
+                # como la respuesta enviada en los logs para facilitar la trazabilidad y el diagnóstico.
                 else:
                     print(f"[DB-Consultas] Solicitud recibida: {solicitud}")
                     respuesta = self._atender_consulta(solicitud)
@@ -169,6 +197,8 @@ class DatabaseService:
         rep_socket.close()
         print("[DB-Consultas] Hilo detenido")
 
+    # El método iniciar se encarga de lanzar los hilos de ingesta y consultas, manteniendo el servicio activo hasta que se reciba una señal de interrupción,
+    # momento en el cual se detienen ambos hilos y se cierra el contexto de ZeroMQ.
     def iniciar(self):
         t_ingesta = threading.Thread(target=self._loop_ingesta)
         t_consultas = threading.Thread(target=self._loop_consultas)

@@ -1,3 +1,14 @@
+"""
+    Desarollado por: Juan Felipe Gomez, Sebastian Gaibor y David Beltran Gomez
+    Implementa un Broker basado en ZeroMQ para enrutamiento de eventos.
+    Usando una comunicación de PUB/SUB desacoplando sensores físicos y módulo Analítico.
+    Consume eventos desde sensores, valida integridad estructural y reenvía mensajes.
+    Aplica validaciones sobre tópicos, payloads y consistencia física básica.
+    Enriquece cada evento con metadatos para trazabilidad.
+    Mantiene procesamiento continuo mediante loop síncrono de recepción y publicación.
+    Cuenta con un cierre controlado de sockets y contexto ZMQ.
+"""
+
 import zmq
 import json
 import threading
@@ -12,8 +23,9 @@ class BrokerZMQ:
         # En el diseño actual usamos el Modo Simple como base robusta
         if self.modo == 'simple':
             self._configurar_sockets()
+
+    # Configura los sockets de ZMQ para el modo simple, estableciendo un socket SUB para recibir eventos de los sensores y un socket PUB para reenviar eventos a PC2 (Analítica).
     def _configurar_sockets(self):
-        """Configuración para el modo de un solo hilo."""
         self.context = zmq.Context()
         # Frontend: Recibe de sensores (SUB)
         self.sub_socket = self.context.socket(zmq.SUB)
@@ -23,6 +35,9 @@ class BrokerZMQ:
         # Backend: Publica hacia PC2 (PUB)
         self.pub_socket = self.context.socket(zmq.PUB)
         self.pub_socket.bind(self.config['red']['broker_analitica_url_PUB'])
+
+    # El método _validar se encarga de realizar validaciones estructurales y de coherencia básica sobre los eventos recibidos, 
+    # asegurando que los mensajes cumplan con el formato esperado y que los datos tengan sentido físico antes de ser reenviados a Analítica.
     def _validar(self, topico, evento):
         """
         Validación del JSON (espera un DICCIONARIO).
@@ -37,6 +52,9 @@ class BrokerZMQ:
             if 'interseccion' not in evento: 
                 return False
         return True
+    
+    # La validación de sentido físico se encarga de verificar que los datos recibidos tengan coherencia con las expectativas del mundo real,
+    # aplicando reglas simples basadas en la física del tráfico y detectar posibles errores o inconsistencias en los datos antes de su procesamiento posterior.
     def _validar_sentido_fisico(self, topico, evento):
         """Verifica coherencia básica según Greenshields."""
         try:
@@ -53,10 +71,15 @@ class BrokerZMQ:
             return True
         except:
             return False
+        
+    # El método _enriquecer agrega una marca de tiempo al evento para facilitar la trazabilidad y el análisis de latencia en el sistema.
     def _enriquecer(self, evento):
         """Agrega timestamp para medir latencia sensor-broker."""
         evento['broker_timestamp'] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
         return evento
+    
+    # El método _loguear_evento se encarga de imprimir un log legible y estructurado de los eventos procesados por el broker, 
+    # mostrando información relevante según el tipo de sensor para facilitar la monitorización y el diagnóstico del sistema.
     def _loguear_evento(self, topico, evento):
         """Imprime un log legible según el tipo de sensor."""
         self.contadores[topico] += 1
@@ -72,6 +95,9 @@ class BrokerZMQ:
         else:
             info = "Datos recibidos"
         print(f"[Broker] {topico:<18} | ID: {sid:<8} | {info}")
+    
+    # El método iniciar implementa el loop principal del broker en modo simple, donde se reciben eventos de los sensores, se validan, 
+    # se enriquecen con metadatos y se reenvían a PC2 (Analítica) a través de ZMQ, manteniendo un procesamiento continuo y controlado.
     def iniciar(self):
         # Configurar timeout para poder capturar Ctrl+C en Windows
         self.sub_socket.setsockopt(zmq.RCVTIMEO, 1000)
