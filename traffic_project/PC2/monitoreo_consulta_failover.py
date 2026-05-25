@@ -2,7 +2,6 @@ import json
 import os
 import sys
 from datetime import datetime
-from urllib.parse import urlparse
 
 import zmq
 
@@ -16,36 +15,25 @@ def load_urls():
     with open(CONFIG_FILE, "r", encoding="utf-8") as file:
         data = json.load(file)
     red = data["red"]
-    return red["analitica_monitoreo_url_REQ"], red["bd_replica_consultas_url_REP"]
+    # En failover (PC2), Monitoreo debe consultar la Analitica LOCAL (REP) y la BD Replica LOCAL (REP).
+    analitica_rep_url = red["monitoreo_analitica_url_REP"]
+    bd_replica_rep_url = red["bd_replica_consultas_url_REP"]
+    return analitica_rep_url, bd_replica_rep_url
 
 
 class MonitoreoConsultaPC2:
     def __init__(self):
         self.context = zmq.Context()
-        self.req_analitica_url, self.req_db_replica_url = load_urls()
-        self.db_req_url = self.req_db_replica_url.replace("://*:", "://localhost:")
+        self.analitica_rep_url, self.db_replica_rep_url = load_urls()
+        self.req_analitica_url = self.analitica_rep_url.replace("://*:", "://localhost:")
+        self.db_req_url = self.db_replica_rep_url.replace("://*:", "://localhost:")
         self.socket_analitica = self.context.socket(zmq.REQ)
         self.socket_analitica.connect(self.req_analitica_url)
         self.socket_db = self.context.socket(zmq.REQ)
         self.socket_db.connect(self.db_req_url)
-        self.analitica_fallback_url = self._build_local_fallback(self.req_analitica_url)
         self.socket_analitica.setsockopt(zmq.RCVTIMEO, 3000)
         self.socket_db.setsockopt(zmq.RCVTIMEO, 3000)
         print(f"[Monitoreo-PC2] Failover activo. Analitica={self.req_analitica_url} DBReplica={self.db_req_url}")
-        if self.analitica_fallback_url:
-            print(f"[Monitoreo-PC2] Fallback Analitica habilitado en {self.analitica_fallback_url}")
-
-    def _build_local_fallback(self, url):
-        try:
-            parsed = urlparse(url)
-            if parsed.scheme != "tcp" or parsed.port is None:
-                return None
-            host = parsed.hostname or ""
-            if host in ("localhost", "127.0.0.1"):
-                return None
-            return f"tcp://localhost:{parsed.port}"
-        except Exception:
-            return None
 
     def _ts(self):
         return datetime.now().isoformat(timespec="seconds")
@@ -72,20 +60,6 @@ class MonitoreoConsultaPC2:
                     self.socket_db.connect(self.db_req_url)
             except Exception:
                 pass
-            if destino == "ANALITICA" and self.analitica_fallback_url:
-                print(f"[{self._ts()}][Monitoreo-PC2][RETRY] Reintentando ANALITICA via {self.analitica_fallback_url}")
-                retry_socket = self.context.socket(zmq.REQ)
-                retry_socket.setsockopt(zmq.RCVTIMEO, 3000)
-                retry_socket.connect(self.analitica_fallback_url)
-                try:
-                    retry_socket.send_string(json.dumps(req))
-                    rep = json.loads(retry_socket.recv_string())
-                    print(f"[{self._ts()}][Monitoreo-PC2][REP<-ANALITICA fallback] OK")
-                    print(json.dumps(rep, indent=2, ensure_ascii=False))
-                except Exception as retry_err:
-                    print(f"[{self._ts()}][Monitoreo-PC2][ERROR] Retry ANALITICA: {retry_err}")
-                finally:
-                    retry_socket.close()
 
     def menu(self):
         while True:
