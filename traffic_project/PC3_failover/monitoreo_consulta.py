@@ -257,7 +257,7 @@ class MonitoreoConsulta:
             elif opcion == "7":
                 self.consultar_priorizaciones_ambulancia()
             elif opcion == "8":
-                print("\n[Monitoreo] Cerrando CLI interactivo. Adios.")
+                print("\n[Monitoreo] Cerrando servicio de Monitoreo y Consulta. Adios.")
                 break
             else:
                 print("\n[Monitoreo] Opcion invalida. Intente de nuevo.\n")
