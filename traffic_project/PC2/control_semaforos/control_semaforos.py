@@ -26,7 +26,16 @@ def load_pull_url():
         url = url.replace("tcp:*", "tcp://*")
     return url
 
+def load_pub_url():
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    url = data["red"]["semaforos_notificacion_url_PUB"]
+    if url.startswith("tcp:*"):
+        url = url.replace("tcp:*", "tcp://*")
+    return url
+
 PULL_URL = load_pull_url()
+PUB_URL = load_pub_url()
 STATE_FILE = "estado_semaforos.json"
 
 class ControlSemaforos:
@@ -69,7 +78,10 @@ class ControlSemaforos:
     def iniciar(self):
         self._pull_socket = self.context.socket(zmq.PULL)
         self._pull_socket.bind(PULL_URL)
+        self._pub_socket = self.context.socket(zmq.PUB)
+        self._pub_socket.bind(PUB_URL)
         print(f"[Control Semáforos] Iniciado. Esperando comandos en {PULL_URL}...")
+        print(f"[Control Semáforos] Notificaciones PUB en {PUB_URL}")
         print("-" * 60)
 
         poller = zmq.Poller()
@@ -109,6 +121,13 @@ class ControlSemaforos:
                 }
                 self._guardar_estado()
 
+            self._pub_socket.send_json({
+                "tipo": "CAMBIO_SEMAFORO",
+                "semaforo_id": semaforo_id,
+                "nuevo_estado": nuevo_estado,
+                "timestamp": comando.get("timestamp"),
+            })
+
             print(f"[ACCIÓN SEMÁFORO]: {semaforo_id}")
             if nuevo_estado == "VERDE":
                 print(f"🟢 CAMBIO A VERDE (Durante {duracion}s)")
@@ -125,6 +144,8 @@ class ControlSemaforos:
     def _cerrar(self):
         if self._pull_socket:
             self._pull_socket.close(0)
+        if self._pub_socket:
+            self._pub_socket.close(0)
         if self.context:
             self.context.term()
         print("[Control Semáforos] Servicio cerrado correctamente.")

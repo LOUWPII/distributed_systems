@@ -8,11 +8,31 @@
         "ultima_actualizacion": "2026-04-05T13:40:45.249051"
     },
     "SEM-C-INT_B3": {
-        "estado": "VERDE",
-        "ultima_actualizacion": "2026-04-05T13:40:45.254830"
+        "estado": "ROJO",
+        "ultima_actualizacion": "2026-05-25T03:00:20.201757"
     },
     "SEM-F-INT_B3": {
+        "estado": "VERDE",
+        "ultima_actualizacion": "2026-05-25T03:00:20.201733"
+    },
+    "SEM-F-INT_C2": {
+        "estado": "VERDE",
+        "ultima_actualizacion": "2026-05-25T03:00:23.117372"
+    },
+    "TEST-SEM-1": {
+        "estado": "VERDE",
+        "ultima_actualizacion": "2026-05-25T00:49:56"
+    },
+    "SEM-C-INT_C2": {
         "estado": "ROJO",
-        "ultima_actualizacion": "2026-04-05T13:40:45.254984"
+        "ultima_actualizacion": "2026-05-25T03:00:23.117463"
+    },
+    "SEM-F-INT_C4": {
+        "estado": "VERDE",
+        "ultima_actualizacion": "2026-05-25T03:00:23.117492"
+    },
+    "SEM-C-INT_C4": {
+        "estado": "ROJO",
+        "ultima_actualizacion": "2026-05-25T03:00:23.117512"
     }
 }

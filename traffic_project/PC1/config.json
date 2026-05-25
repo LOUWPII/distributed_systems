@@ -3,17 +3,18 @@
     "broker_sensor_url_SUB": "tcp://localhost:5550",
     "sensor_broker_url_PUB": "tcp://*:5550",
     "broker_analitica_url_PUB": "tcp://*:5551",
-    "analitica_broker_url_SUB": "tcp://10.43.99.112:5551",
+    "analitica_broker_url_SUB": "tcp://localhost:5551",
     "analitica_semaforos_url_PUSH": "tcp://localhost:5556",
-    "semaforos_analitica_url_PULL": "tcp:*:5556",
+    "semaforos_analitica_url_PULL": "tcp://*:5556",
+    "semaforos_notificacion_url_PUB": "tcp://*:5570",
     "analitica_bd_replica_url_PUSH": "tcp://localhost:5557",
     "bd_replica_analitica_url_PULL": "tcp://*:5557",
-    "analitica_bd_principal_url_PUSH": "tcp://10.43.99.93:5558",
+    "analitica_bd_principal_url_PUSH": "tcp://localhost:5558",
     "bd_replica_consultas_url_REP": "tcp://*:5560",
     "bd_principal_analitica_url_PULL": "tcp://*:5558",
-    "analitica_health_url_REQ": "tcp://10.43.99.93:5562",
+    "analitica_health_url_REQ": "tcp://localhost:5562",
     "health_analitica_url_REP": "tcp://*:5562",
-    "analitica_monitoreo_url_REQ": "tcp://10.43.98.246:5563",
+    "analitica_monitoreo_url_REQ": "tcp://localhost:5563",
     "monitoreo_analitica_url_REP": "tcp://*:5563",
     "monitoreo_bd_principal_url_REQ": "tcp://localhost:5564",
     "bd_principal_monitoreo_url_REP": "tcp://*:5564",
@@ -98,8 +99,32 @@
   },
   "parametros_simulacion": {
     "intervalo_evolucion_s": 5,
-    "intervalo_sensores_s": 10,
+    "intervalo_sensores_s": 3,
     "volatilidad_ruido": 0.15,
     "probabilidad_shock": 0.0
+  },
+  "benchmark": {
+    "tests": {
+      "broker_latency": {
+        "enabled": true
+      },
+      "semaphore_latency": {
+        "enabled": true,
+        "query_handler_REQ": "tcp://10.43.98.246:5563",
+        "query_handler_REP": "tcp://*:5563",
+        "semaphore_pub_SUB": "tcp://10.43.98.246:5570",
+        "semaphore_pub_PUB": "tcp://*:5570"
+      },
+      "monitoring_latency": {
+        "enabled": true,
+        "query_handler_REQ": "tcp://10.43.98.246:5563",
+        "query_handler_REP": "tcp://*:5563"
+      },
+      "throughput": {
+        "enabled": true,
+        "bd_replica_REQ": "tcp://10.43.98.246:5560",
+        "bd_replica_REP": "tcp://*:5560"
+      }
+    }
   }
 }

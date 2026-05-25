@@ -118,6 +118,14 @@ class DatabaseService:
                 "priorizaciones": detalle,
             }
 
+        if tipo == "CONSULTA_TOTAL_EVENTOS":
+            eventos = self._safe_read_all("evento")
+            return {
+                "estado": "OK",
+                "tipo_consulta": tipo,
+                "total_eventos": len(eventos),
+            }
+
         return {"estado": "ERROR", "mensaje": f"Tipo de consulta no soportado: {tipo}"}
 
     # El método _loop_ingesta se encarga de recibir eventos asíncronos a través de un socket PULL, persistiendo cada evento 

@@ -12,6 +12,8 @@
 import zmq
 import json
 import multiprocessing
+import os
+import time
 from datetime import datetime, timezone
 
 # ── Constantes internas ─────────────────────────────────────
@@ -117,6 +119,8 @@ def _worker_process(worker_id, receiver_url, publisher_url, topicos, shutdown_ev
             print(f"[Worker-{worker_id}] JSON inválido en {topico}")
             continue
 
+        t_start = time.perf_counter()
+
         if not _validar_evento(topico, evento, topicos) or not _validar_sentido_fisico(topico, evento):
             print(f"[Worker-{worker_id}] Mensaje de {evento.get('sensor_id', '???')} DESCARTADO por validación.")
             continue
@@ -133,6 +137,16 @@ def _worker_process(worker_id, receiver_url, publisher_url, topicos, shutdown_ev
         else:
             info = "Datos recibidos"
         print(f"[Worker-{worker_id}] {topico:<18} | ID: {sid:<8} | {info}")
+
+        latency_us = (time.perf_counter() - t_start) * 1_000_000
+
+        latency_file = os.environ.get('BENCHMARK_LATENCY_FILE')
+        if latency_file:
+            try:
+                with open(latency_file, 'a') as f:
+                    f.write(f"{latency_us:.1f}\n")
+            except OSError:
+                pass
 
         payload_final = json.dumps(evento)
         push_socket.send_multipart([topico.encode('utf-8'), payload_final.encode('utf-8')])
@@ -223,6 +237,7 @@ class BrokerZMQ:
                     except json.JSONDecodeError:
                         print(f"[Broker] Error: JSON inválido en {topico}")
                         continue
+                    t_start = time.perf_counter()
                     if _validar_evento(topico, evento, self.topicos) and _validar_sentido_fisico(topico, evento):
                         evento_enriquecido = _enriquecer_evento(evento)
                         payload_final = json.dumps(evento_enriquecido)
@@ -231,6 +246,15 @@ class BrokerZMQ:
                             payload_final.encode('utf-8')
                         ])
                         self._loguear_evento(topico, evento_enriquecido)
+
+                        latency_us = (time.perf_counter() - t_start) * 1_000_000
+                        latency_file = os.environ.get('BENCHMARK_LATENCY_FILE')
+                        if latency_file:
+                            try:
+                                with open(latency_file, 'a') as f:
+                                    f.write(f"{latency_us:.1f}\n")
+                            except OSError:
+                                pass
                     else:
                         print(f"[Broker] Mensaje de {evento.get('sensor_id', '???')} DESCARTADO por validación.")
                 except zmq.Again:
