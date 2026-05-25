@@ -21,6 +21,12 @@ class GestorSalida:
         self._contexto_zmq = zmq.Context.instance()
         self._activo = True
         self.name = "GestorSalida" # Utilizado en el print de main.py
+        self._stats_lock = threading.Lock()
+        self._stats = {
+            "replica_enviados": 0,
+            "principal_enviados": 0,
+            "principal_omitidos": 0,
+        }
         
         # 3 Colas independientes en memoria para los distintos receptores
         self._queue_semaforos = queue.Queue(maxsize=0)
@@ -73,6 +79,8 @@ class GestorSalida:
             try:
                 msj = self._queue_replica.get(timeout=1.0)
                 self._sock_bd_replica.send_string(msj) # Envío bloqueante sólo para su red
+                with self._stats_lock:
+                    self._stats["replica_enviados"] += 1
             except queue.Empty:
                 pass
             except zmq.ZMQError as e:
@@ -85,6 +93,8 @@ class GestorSalida:
                 # Verifica el estado final antes de intentar enviarlo sobre una conexión fallida o bloqueada
                 if self._health.is_pc3_disponible():
                     self._sock_bd_principal.send_string(msj)
+                    with self._stats_lock:
+                        self._stats["principal_enviados"] += 1
             except queue.Empty:
                 pass
             except zmq.ZMQError as e:
@@ -116,8 +126,6 @@ class GestorSalida:
     def persistir_orden(self, orden: OrdenDirecta) -> None:
         self._dispatch_to_bd({"tipo_registro": "priorizacion", "datos": orden.to_registro()})
 
-
-
     def _dispatch_to_bd(self, registro: dict) -> None:
         mensaje = json.dumps(registro)
         # Se envía la petición hacia cada hilo gestor correspondiente.
@@ -126,6 +134,13 @@ class GestorSalida:
         # Al encolar ya filtramos si la principal está caída (ahorro de memoria)
         if self._health.is_pc3_disponible():
             self._queue_principal.put(mensaje)
+        else:
+            with self._stats_lock:
+                self._stats["principal_omitidos"] += 1
+
+    def obtener_metricas(self) -> dict:
+        with self._stats_lock:
+            return dict(self._stats)
 
     def detener(self) -> None:
         self._activo = False

@@ -50,6 +50,16 @@ def main():
     event_receiver = EventReceiver(config, event_queue)
     query_handler = QueryHandler(config, rules_engine)
 
+    def _on_health_change(pc3_disponible: bool):
+        if pc3_disponible:
+            print("[Main][Failover] PC3 recuperado -> monitoreo respaldo desactivado.")
+            print("[Main][Inserts] Destino activo: BD Principal + BD Réplica.")
+        else:
+            print("[Main][Failover] PC3 caído -> monitoreo respaldo activado.")
+            print("[Main][Inserts] Destino activo: SOLO BD Réplica (redirección automática).")
+
+    health_monitor.add_listener(_on_health_change)
+
     # 4. Arrancar todos los hilos
     hilos = [health_monitor, gestor_salida, rules_engine, event_receiver, query_handler]
     for hilo in hilos:
@@ -57,6 +67,7 @@ def main():
         print(f"[Main] Hilo iniciado: {hilo.name}")
 
     print("[Main] Servicio de Analítica activo.\n")
+    print("[Main][Inserts] Destino inicial: BD Principal + BD Réplica.")
 
     def apagar(sig, frame):
         print("\n[Main] Señal de interrupción recibida — apagando...")
@@ -71,8 +82,29 @@ def main():
 
     # 5. Mantener el hilo principal vivo de forma interrumpible
     try:
+        ultimo_ruteo = None
+        ultimo_reporte = 0.0
         while True:
             time.sleep(1) # sleep permite que Python respire y detecte señales
+            pc3_ok = health_monitor.is_pc3_disponible()
+            ruteo = "PRINCIPAL+REPLICA" if pc3_ok else "SOLO_REPLICA"
+            if ruteo != ultimo_ruteo:
+                if pc3_ok:
+                    print("[Main][Inserts] Envío habilitado a BD Principal y BD Réplica.")
+                else:
+                    print("[Main][Inserts] Falla en BD Principal. Envío redirigido a BD Réplica.")
+                ultimo_ruteo = ruteo
+
+            ahora = time.time()
+            if ahora - ultimo_reporte >= 5:
+                metricas = gestor_salida.obtener_metricas()
+                print(
+                    "[Main][Inserts][Estado] "
+                    f"ruta={ruteo} | replica_enviados={metricas['replica_enviados']} "
+                    f"| principal_enviados={metricas['principal_enviados']} "
+                    f"| redirigidos_replica={metricas['principal_omitidos']}"
+                )
+                ultimo_reporte = ahora
     except KeyboardInterrupt:
         print("\n[Main] Apagando servicio de analítica (KeyboardInterrupt)...")
         apagar(None, None) # Llamamos a la función de limpieza
