@@ -10,14 +10,16 @@
     "analitica_bd_replica_url_PUSH": "tcp://localhost:5557",
     "bd_replica_analitica_url_PULL": "tcp://*:5557",
     "analitica_bd_principal_url_PUSH": "tcp://10.43.99.93:5558",
-    "bd_replica_consultas_url_REP": "tcp://*:5560",
     "bd_principal_analitica_url_PULL": "tcp://*:5558",
     "analitica_health_url_REQ": "tcp://10.43.99.93:5562",
     "health_analitica_url_REP": "tcp://*:5562",
     "analitica_monitoreo_url_REQ": "tcp://10.43.98.246:5563",
     "monitoreo_analitica_url_REP": "tcp://*:5563",
     "monitoreo_bd_principal_url_REQ": "tcp://localhost:5564",
-    "bd_principal_monitoreo_url_REP": "tcp://*:5564"
+    "bd_principal_monitoreo_url_REP": "tcp://*:5564",
+    "monitoreo_analitica_url_REQ": "tcp://10.43.98.246:5563",
+    "monitoreo_bd_replica_url_REQ": "tcp://10.43.98.246:5560",
+    "bd_replica_consultas_url_REP": "tcp://*:5560"
   },
   "modo_broker": "simple",
   "sensores_topicos": {
