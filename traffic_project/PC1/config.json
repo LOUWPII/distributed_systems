@@ -20,7 +20,7 @@
     "city_manager_service_url_REP": "tcp://*:5555",
     "city_manager_client_url_REQ": "tcp://localhost:5555"
   },
-  "modo_broker": "simple",
+  "modo_broker": "multihilos",
   "sensores_topicos": {
     "camara": "camara",
     "espira": "espira_inductiva",
@@ -31,49 +31,49 @@
     "timeout_s": 2
   },
   "sensores": [
-      {
-        "sensor_id": "CAM-C2",
-        "tipo": "camara",
-        "interseccion": "INT_C2",
-        "calle_id": "fila_C",
-        "direccion": "fila"
-      },
-      {
-        "sensor_id": "ESP-C2",
-        "tipo": "espira_inductiva",
-        "interseccion": "INT_C2",
-        "calle_id": "col_2",
-        "direccion": "columna"
-      },
-      {
-        "sensor_id": "GPS-B3",
-        "tipo": "gps",
-        "interseccion": "INT_B3",
-        "calle_id": "fila_B",
-        "direccion": "fila"
-      },
-      {
-        "sensor_id": "CAM-B3",
-        "tipo": "camara",
-        "interseccion": "INT_B3",
-        "calle_id": "col_3",
-        "direccion": "columna"
-      },
-      {
-        "sensor_id": "ESP-C4",
-        "tipo": "espira_inductiva",
-        "interseccion": "INT_C4",
-        "calle_id": "fila_C",
-        "direccion": "fila"
-      },
-      {
-        "sensor_id": "CAM-C4",
-        "tipo": "camara",
-        "interseccion": "INT_C4",
-        "calle_id": "col_4",
-        "direccion": "columna"
-      }
-    ],
+    {
+      "sensor_id": "CAM-C2",
+      "tipo": "camara",
+      "interseccion": "INT_C2",
+      "calle_id": "fila_C",
+      "direccion": "fila"
+    },
+    {
+      "sensor_id": "ESP-C2",
+      "tipo": "espira_inductiva",
+      "interseccion": "INT_C2",
+      "calle_id": "col_2",
+      "direccion": "columna"
+    },
+    {
+      "sensor_id": "GPS-B3",
+      "tipo": "gps",
+      "interseccion": "INT_B3",
+      "calle_id": "fila_B",
+      "direccion": "fila"
+    },
+    {
+      "sensor_id": "CAM-B3",
+      "tipo": "camara",
+      "interseccion": "INT_B3",
+      "calle_id": "col_3",
+      "direccion": "columna"
+    },
+    {
+      "sensor_id": "ESP-C4",
+      "tipo": "espira_inductiva",
+      "interseccion": "INT_C4",
+      "calle_id": "fila_C",
+      "direccion": "fila"
+    },
+    {
+      "sensor_id": "CAM-C4",
+      "tipo": "camara",
+      "interseccion": "INT_C4",
+      "calle_id": "col_4",
+      "direccion": "columna"
+    }
+  ],
   "intersecciones": [
     {
       "interseccion_id": "INT_C2",
@@ -94,7 +94,7 @@
   "ciudad": {
     "filas": 4,
     "columnas": 4,
-    "descripcion": "Cuadrícula del caso de prueba"
+    "descripcion": "Cuadr\u00c3\u00adcula del caso de prueba"
   },
   "parametros_simulacion": {
     "intervalo_evolucion_s": 5,
