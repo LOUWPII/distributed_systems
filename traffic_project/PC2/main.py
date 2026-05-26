@@ -1,114 +1,93 @@
 """
-    main.py — Punto de entrada del Servicio de Analítica (PC2).
-
-    Responsabilidades:
-    1. Cargar la configuración desde config.json
-    2. Crear la event_queue compartida entre EventReceiver y RulesEngine
-    3. Instanciar todos los componentes en el orden correcto (dependencias primero)
-    4. Arrancar los hilos
-    5. Esperar señal de interrupción (Ctrl+C) y apagar ordenadamente
-
-    Orden de instanciación (importante — las dependencias deben existir primero):
-    Config → HealthMonitor → GestorSalida → RulesEngine → EventReceiver → QueryHandler
+    Servicio de monitoreo de salud y tolerancia a fallos para nodos distribuidos del sistema.
+    Supervisa disponibilidad de PC3 mediante heartbeats PING/PONG sobre ZeroMQ REQ/REP.
+    Ejecuta verificaciones periodicas con timeout, recreacion de sockets y recuperacion automatica.
+    Notifica a listeners registrados cuando cambia el estado de disponibilidad de PC3.
+    Implementa estrategias de alta disponibilidad sin lanzar procesos hijos que contaminen la consola.
 """
 
-import queue
-import signal
-import sys
+import threading
 import time
+import zmq
 
 from config import Config
-from infrastructure.health_monitor import HealthMonitor
-from infrastructure.gestor_salida import GestorSalida
-from application.rules_engine import RulesEngine
-from infrastructure.event_receiver import EventReceiver
-from application.query_handler import QueryHandler
 
 
-def main():
-    print("=" * 55)
-    print("  Servicio de Analítica — PC2")
-    print("  Sistema de Gestión de Tráfico")
-    print("=" * 55)
+class HealthMonitor(threading.Thread):
+    def __init__(self, config: Config):
+        super().__init__(daemon=True, name="HealthMonitor")
+        self._config = config
+        self._pc3_disponible = True
+        self._lock = threading.Lock()
+        self._activo = True
+        self._contexto_zmq = zmq.Context.instance()
+        self._listeners = []
 
-    # 1. Cargar configuración
-    try:
-        config = Config("config/config.json")
-        print(f"[Main] Configuración cargada: {config}")
-    except FileNotFoundError as e:
-        print(f"[Main] ERROR: {e}")
-        sys.exit(1)
+    def is_pc3_disponible(self) -> bool:
+        with self._lock:
+            return self._pc3_disponible
 
-    # 2. Cola compartida entre EventReceiver y RulesEngine
-    # maxsize=0 significa ilimitada — ZMQ ya tiene su propio buffer interno
-    event_queue = queue.Queue(maxsize=0)
+    def add_listener(self, callback) -> None:
+        self._listeners.append(callback)
 
-    # 3. Instanciar componentes en orden de dependencias
-    health_monitor = HealthMonitor(config)
-    gestor_salida = GestorSalida(config, health_monitor)
-    rules_engine = RulesEngine(config, event_queue, gestor_salida)
-    event_receiver = EventReceiver(config, event_queue)
-    query_handler = QueryHandler(config, rules_engine)
+    def detener(self) -> None:
+        self._activo = False
 
-    def _on_health_change(pc3_disponible: bool):
-        if pc3_disponible:
-            print("[Main][Failover] PC3 recuperado -> monitoreo respaldo desactivado.")
-            print("[Main][Inserts] Destino activo: BD Principal + BD Réplica.")
-        else:
-            print("[Main][Failover] PC3 caído -> monitoreo respaldo activado.")
-            print("[Main][Inserts] Destino activo: SOLO BD Réplica (redirección automática).")
+    def _crear_socket(self) -> zmq.Socket:
+        socket = self._contexto_zmq.socket(zmq.REQ)
+        socket.setsockopt(zmq.RCVTIMEO, self._config.health_timeout_s * 1000)
+        socket.setsockopt(zmq.LINGER, 0)
+        socket.connect(self._config.pc3_health_url)
+        return socket
 
-    health_monitor.add_listener(_on_health_change)
+    def run(self) -> None:
+        print(f"[HealthMonitor] Iniciado. Heartbeat cada {self._config.health_intervalo_s}s")
+        socket = self._crear_socket()
 
-    # 4. Arrancar todos los hilos
-    hilos = [health_monitor, gestor_salida, rules_engine, event_receiver, query_handler]
-    for hilo in hilos:
-        hilo.start()
-        print(f"[Main] Hilo iniciado: {hilo.name}")
+        while self._activo:
+            resultado = self._check(socket)
+            self._actualizar_estado(resultado)
+            time.sleep(self._config.health_intervalo_s)
 
-    print("[Main] Servicio de Analítica activo.\n")
-    print("[Main][Inserts] Destino inicial: BD Principal + BD Réplica.")
+        socket.close()
+        print("[HealthMonitor] Detenido")
 
-    def apagar(sig, frame):
-        print("\n[Main] Señal de interrupción recibida — apagando...")
-        for hilo in [event_receiver, query_handler, rules_engine, health_monitor, gestor_salida]:
-            if hasattr(hilo, "detener"):
-                hilo.detener()
-        print("[Main] Servicio detenido.")
-        sys.exit(0)
+    def _check(self, socket: zmq.Socket) -> bool:
+        try:
+            print(f"[HealthMonitor] -> PING {self._config.pc3_health_url}")
+            socket.send_string("PING")
+            respuesta = socket.recv_string()
+            print(f"[HealthMonitor] <- {respuesta}")
+            return respuesta == "PONG"
+        except (zmq.Again, zmq.ZMQError):
+            print(f"[HealthMonitor] !! Timeout/ERROR esperando PONG en {self._config.pc3_health_url}")
+            try:
+                socket.close()
+            except Exception:
+                pass
+            return False
 
-    signal.signal(signal.SIGINT,  apagar)
-    signal.signal(signal.SIGTERM, apagar)
+    def _actualizar_estado(self, nuevo_estado: bool) -> None:
+        with self._lock:
+            estado_anterior = self._pc3_disponible
+            self._pc3_disponible = nuevo_estado
+            estado_nuevo = self._pc3_disponible
 
-    # 5. Mantener el hilo principal vivo de forma interrumpible
-    try:
-        ultimo_ruteo = None
-        ultimo_reporte = 0.0
-        while True:
-            time.sleep(1) # sleep permite que Python respire y detecte señales
-            pc3_ok = health_monitor.is_pc3_disponible()
-            ruteo = "PRINCIPAL+REPLICA" if pc3_ok else "SOLO_REPLICA"
-            if ruteo != ultimo_ruteo:
-                if pc3_ok:
-                    print("[Main][Inserts] Envío habilitado a BD Principal y BD Réplica.")
-                else:
-                    print("[Main][Inserts] Falla en BD Principal. Envío redirigido a BD Réplica.")
-                ultimo_ruteo = ruteo
+        if estado_anterior != estado_nuevo:
+            if not estado_nuevo:
+                print("[HealthMonitor] PC3 NO DISPONIBLE. Activando failover.")
+                print("[HealthMonitor] -> Envio a BD Principal DETENIDO.")
+                print("[HealthMonitor] -> Envio a BD Replica CONTINUA.")
+                print("[HealthMonitor] -> QueryHandler de PC2 sigue activo.")
+                print("[HealthMonitor] -> Levante manualmente: python monitoreo_universal.py en PC2")
+            else:
+                print("[HealthMonitor] PC3 RECUPERADO. Desactivando failover.")
+                print("[HealthMonitor] -> Envio a BD Principal REANUDADO.")
+            self._notificar_listeners(estado_nuevo)
 
-            ahora = time.time()
-            if ahora - ultimo_reporte >= 5:
-                metricas = gestor_salida.obtener_metricas()
-                print(
-                    "[Main][Inserts][Estado] "
-                    f"ruta={ruteo} | replica_enviados={metricas['replica_enviados']} "
-                    f"| principal_enviados={metricas['principal_enviados']} "
-                    f"| redirigidos_replica={metricas['principal_omitidos']}"
-                )
-                ultimo_reporte = ahora
-    except KeyboardInterrupt:
-        print("\n[Main] Apagando servicio de analítica (KeyboardInterrupt)...")
-        apagar(None, None) # Llamamos a la función de limpieza
-
-
-if __name__ == "__main__":
-    main()
+    def _notificar_listeners(self, pc3_disponible: bool) -> None:
+        for callback in self._listeners:
+            try:
+                callback(pc3_disponible)
+            except Exception as error:
+                print(f"[HealthMonitor] Error notificando listener: {error}")
